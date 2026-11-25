@@ -261,6 +261,8 @@ export default async function CampaignPage({
           {(steps ?? []).map((s, i) => {
             const stepVariants = s.type === "email" ? (variantsByStep.get(s.id) ?? []) : [];
             const previewTo = sample?.email ?? "a sample contact";
+            const followUp = (steps ?? []).slice(0, i).some((p) => p.type === "email");
+            const threadHint = "Gmail and Microsoft senders reply in the first email's thread with the subject Re: <first subject>, so a variant subject here applies only to Resend senders. Vary the body to test follow-ups.";
             return (
               <div key={s.id} className="rounded-md border border-slate-200 p-3">
                 <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase text-slate-500">
@@ -305,6 +307,7 @@ export default async function CampaignPage({
                           </Button>
                         </form>
                       </div>
+                      {followUp && <p className="mb-2 text-xs text-slate-500">{threadHint}</p>}
                       <form action={updateVariant.bind(null, id, v.id)} className="flex flex-col gap-3">
                         <EmailFields subject={v.subject} body={v.body_plain} withName={false} />
                         <Button type="submit" variant="secondary" disabled={locked}>
@@ -357,6 +360,7 @@ export default async function CampaignPage({
                   <form action={addVariant.bind(null, id, s.id)} className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-3">
                     <h3 className="text-sm font-medium">Add variant</h3>
                     <p className="text-xs text-slate-500">Each enrollment gets one variant of this step, split evenly. Variants are plain text.</p>
+                    {followUp && <p className="text-xs text-slate-500">{threadHint}</p>}
                     <EmailFields withName={false} />
                     <Button type="submit" variant="secondary" disabled={locked}>
                       Add variant

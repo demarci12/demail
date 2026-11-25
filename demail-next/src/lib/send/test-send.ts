@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 import { escapeHtml } from "@/lib/merge";
@@ -31,11 +32,14 @@ export async function sendStepTest(
       html: `${linkifyPlain(input.text + sigPlain, null)}<p style="font-size:12px;color:#64748b"><a href="${escapeHtml(link)}">Unsubscribe</a></p>`,
       unsubscribeUrl: link,
       oneClickUrl: `${base}/api/unsubscribe/preview`,
-      // Resend drops a second click inside the same minute.
-      idempotencyKey: `test:${input.testKey}:${Math.floor(Date.now() / 60000)}`,
+      // Resend drops a second identical click inside the same minute; a new mailbox or edit gets a new key.
+      idempotencyKey: `test:${input.testKey}:${contentHash(mailbox.id, input.subject, input.text)}:${Math.floor(Date.now() / 60000)}`,
     });
   } catch (e) {
     if (e instanceof MailAuthError) return { ok: false, retryable: false, message: "Reconnect this mailbox first" };
     return { ok: false, retryable: true, message: "Could not reach the mail provider" };
   }
+}
+function contentHash(mailboxId: string, subject: string, text: string): string {
+  return createHash("sha256").update(`${mailboxId}\n${subject}\n${text}`).digest("hex").slice(0, 16);
 }

@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
 import { EMAIL_PATTERN } from "@/lib/csv";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { readRefreshToken } from "@/lib/mail/credentials";
+import { revokeGoogle } from "@/lib/mail/oauth";
 const schema = z.object({
   email: z.string().trim().toLowerCase().regex(EMAIL_PATTERN).max(320),
   from_name: z.string().trim().max(200),
@@ -37,6 +40,11 @@ export async function setMailboxStatus(id: string, status: "active" | "paused") 
 export async function deleteMailbox(id: string) {
   const { supabase, org, canManage } = await getOrgContext();
   if (!canManage) return fail("Only owners and admins can remove senders.");
+  const { data: mailbox } = await supabase.from("mailboxes").select("provider").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (mailbox?.provider === "google") {
+    const token = await readRefreshToken(createAdminClient(), id, org.id);
+    if (token) await revokeGoogle(token);
+  }
   await supabase.from("mailboxes").delete().eq("id", id).eq("organization_id", org.id);
   revalidatePath("/app/mailboxes");
 }

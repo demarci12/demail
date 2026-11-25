@@ -50,7 +50,16 @@ Also listed with comments in `.env.example`.
 | `UNSUBSCRIBE_SECRET` | yes | HMAC secret for unsubscribe links, at least 32 characters. Changing it invalidates links already sent |
 | `NEXT_PUBLIC_APP_URL` | yes | Public base URL without a trailing slash, used in links inside mail |
 | `SEND_BATCH_SIZE` | no | Enrollments processed per tick, default 20 |
-| `INSTANCE_DAILY_SEND_CAP` | no | Mails per UTC day for the whole instance, default 100 |
+| `INSTANCE_DAILY_SEND_CAP` | no | Mails per UTC day for the whole instance, default 100 (Resend senders only) |
+| `MAILBOX_ENCRYPTION_KEY` | no | 32 bytes, base64 (`openssl rand -base64 32`). Seals Google and Microsoft tokens before they reach the database. Required to connect those mailboxes. Losing it means reconnecting them |
+| `MAILBOX_ENCRYPTION_KEY_PREVIOUS` | no | The old key while rotating. Tokens sealed with it still open, and are re-sealed with the current key at the next refresh |
+| `GOOGLE_CLIENT_ID` | no | Google OAuth client id. With the secret and the encryption key it enables Connect Google |
+| `GOOGLE_CLIENT_SECRET` | no | Google OAuth client secret |
+| `MICROSOFT_CLIENT_ID` | no | Microsoft Entra application (client) id. With the secret and the encryption key it enables Connect Microsoft |
+| `MICROSOFT_CLIENT_SECRET` | no | Microsoft Entra client secret value |
+| `MICROSOFT_TENANT` | no | Entra tenant id, or `common` (default), `organizations` or `consumers` |
+| `SYNC_BATCH_SIZE` | no | Mailboxes read per sync tick, default 5, max 50 |
+| `SYNC_MESSAGES_PER_MAILBOX` | no | Messages read per mailbox per tick, default 50, max 200 |
 
 No secret is committed. Real values live only in Vercel and in your local `.env.local`.
 
@@ -68,6 +77,23 @@ Use a hosted Supabase project for development, or run `supabase start` if you ha
 ```
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/send
 ```
+
+## Connecting Google and Microsoft mailboxes
+Optional. Resend senders keep working without any of this. Set `MAILBOX_ENCRYPTION_KEY` first, then one or both providers. The redirect URI is `<NEXT_PUBLIC_APP_URL>/app/mailboxes/connect/<google|microsoft>/callback`. SMTP and IMAP mailboxes are not supported, because long-lived connections cannot run on Vercel or Supabase Edge Functions.
+
+**Google**
+1. In Google Cloud, create a project and enable the Gmail API.
+2. Configure the OAuth consent screen. Add the scopes `gmail.send` and `gmail.readonly` and your own address as a test user.
+3. Create an OAuth client of type Web application and add the redirect URI `<NEXT_PUBLIC_APP_URL>/app/mailboxes/connect/google/callback`.
+4. Copy the client id and secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+5. Publish the app to Production. In Testing mode refresh tokens expire after 7 days, so mailboxes would disconnect weekly.
+6. Both Gmail scopes are restricted. An unverified app is capped at 100 users and shows a warning screen. A Google Workspace admin can mark the app as trusted to avoid that for their domain.
+
+**Microsoft**
+1. In Microsoft Entra, register an application. For supported account types choose the option that matches your mailboxes, and set `MICROSOFT_TENANT` to match (`common` for work and personal accounts).
+2. Add a Web redirect URI `<NEXT_PUBLIC_APP_URL>/app/mailboxes/connect/microsoft/callback`.
+3. Under Certificates and secrets, create a client secret and copy its value (not the id) into `MICROSOFT_CLIENT_SECRET`. Copy the application id into `MICROSOFT_CLIENT_ID`.
+4. API permissions: delegated `offline_access`, `User.Read`, `Mail.ReadWrite` and `Mail.Send`.
 
 ## How sending works
 

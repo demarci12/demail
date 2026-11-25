@@ -28,3 +28,29 @@ export function publicEnv() {
 export function serverEnv() {
   return serverSchema.parse(process.env);
 }
+const mailSchema = z.object({
+  MAILBOX_ENCRYPTION_KEY: z.string().min(1).optional(),
+  MAILBOX_ENCRYPTION_KEY_PREVIOUS: z.string().min(1).optional(),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  MICROSOFT_CLIENT_ID: z.string().min(1).optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().min(1).optional(),
+  MICROSOFT_TENANT: z.string().min(1).default("common"),
+  SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(5),
+  SYNC_MESSAGES_PER_MAILBOX: z.coerce.number().int().min(1).max(200).default(50),
+});
+// Google and Microsoft mailbox settings, all optional so Resend-only installs need nothing new.
+export function mailEnv() {
+  const blank = (v: string | undefined) => (v === "" ? undefined : v);
+  const raw = Object.fromEntries(Object.keys(mailSchema.shape).map((k) => [k, blank(process.env[k])]));
+  return mailSchema.parse(raw);
+}
+// Providers with client id, secret and the encryption key all present.
+export function oauthProviders(): { google: boolean; microsoft: boolean } {
+  const e = mailEnv();
+  const key = !!e.MAILBOX_ENCRYPTION_KEY;
+  return {
+    google: key && !!e.GOOGLE_CLIENT_ID && !!e.GOOGLE_CLIENT_SECRET,
+    microsoft: key && !!e.MICROSOFT_CLIENT_ID && !!e.MICROSOFT_CLIENT_SECRET,
+  };
+}

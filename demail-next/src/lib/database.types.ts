@@ -179,7 +179,7 @@ export type Database = {
           email: string;
           from_name: string;
           reply_to: string | null;
-          provider: string;
+          provider: 'resend' | 'google' | 'microsoft';
           status: Database['public']['Enums']['mailbox_status'];
           daily_limit: number;
           min_gap_seconds: number;
@@ -189,6 +189,9 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          last_synced_at: string | null;
+          last_error: string | null;
+          provider_account_id: string | null;
         };
         Insert: {
           id?: string;
@@ -196,7 +199,7 @@ export type Database = {
           email: string;
           from_name?: string;
           reply_to?: string | null;
-          provider?: string;
+          provider?: 'resend' | 'google' | 'microsoft';
           status?: Database['public']['Enums']['mailbox_status'];
           daily_limit?: number;
           min_gap_seconds?: number;
@@ -206,6 +209,9 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
+          last_error?: string | null;
+          provider_account_id?: string | null;
         };
         Update: {
           id?: string;
@@ -213,7 +219,7 @@ export type Database = {
           email?: string;
           from_name?: string;
           reply_to?: string | null;
-          provider?: string;
+          provider?: 'resend' | 'google' | 'microsoft';
           status?: Database['public']['Enums']['mailbox_status'];
           daily_limit?: number;
           min_gap_seconds?: number;
@@ -223,6 +229,9 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          last_synced_at?: string | null;
+          last_error?: string | null;
+          provider_account_id?: string | null;
         };
         Relationships: [];
       };
@@ -353,6 +362,7 @@ export type Database = {
           mailbox_id: string | null;
           attempts: number;
           error: string | null;
+          stopped_reason: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -368,6 +378,7 @@ export type Database = {
           mailbox_id?: string | null;
           attempts?: number;
           error?: string | null;
+          stopped_reason?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -383,6 +394,7 @@ export type Database = {
           mailbox_id?: string | null;
           attempts?: number;
           error?: string | null;
+          stopped_reason?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -402,6 +414,9 @@ export type Database = {
           subject: string | null;
           error: string | null;
           sent_at: string | null;
+          provider_message_id: string | null;
+          provider_thread_id: string | null;
+          rfc_message_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -417,6 +432,9 @@ export type Database = {
           subject?: string | null;
           error?: string | null;
           sent_at?: string | null;
+          provider_message_id?: string | null;
+          provider_thread_id?: string | null;
+          rfc_message_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -432,6 +450,9 @@ export type Database = {
           subject?: string | null;
           error?: string | null;
           sent_at?: string | null;
+          provider_message_id?: string | null;
+          provider_thread_id?: string | null;
+          rfc_message_id?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -469,6 +490,168 @@ export type Database = {
         };
         Relationships: [];
       };
+      mailbox_credentials: {
+        Row: {
+          mailbox_id: string;
+          organization_id: string;
+          ciphertext: string;
+          key_version: number;
+          version: number;
+          scopes: string | null;
+          expires_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          mailbox_id: string;
+          organization_id: string;
+          ciphertext: string;
+          key_version?: number;
+          version?: number;
+          scopes?: string | null;
+          expires_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          mailbox_id?: string;
+          organization_id?: string;
+          ciphertext?: string;
+          key_version?: number;
+          version?: number;
+          scopes?: string | null;
+          expires_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      mailbox_sync_state: {
+        Row: {
+          mailbox_id: string;
+          organization_id: string;
+          cursor: string | null;
+          next_sync_at: string;
+          last_synced_at: string | null;
+          consecutive_errors: number;
+          hot: boolean;
+        };
+        Insert: {
+          mailbox_id: string;
+          organization_id: string;
+          cursor?: string | null;
+          next_sync_at?: string;
+          last_synced_at?: string | null;
+          consecutive_errors?: number;
+          hot?: boolean;
+        };
+        Update: {
+          mailbox_id?: string;
+          organization_id?: string;
+          cursor?: string | null;
+          next_sync_at?: string;
+          last_synced_at?: string | null;
+          consecutive_errors?: number;
+          hot?: boolean;
+        };
+        Relationships: [];
+      };
+      threads: {
+        Row: {
+          id: string;
+          organization_id: string;
+          mailbox_id: string;
+          provider_thread_id: string;
+          subject: string | null;
+          contact_id: string | null;
+          campaign_id: string | null;
+          snippet: string | null;
+          last_message_at: string;
+          is_unread: boolean;
+          status: 'open' | 'archived';
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          mailbox_id: string;
+          provider_thread_id: string;
+          subject?: string | null;
+          contact_id?: string | null;
+          campaign_id?: string | null;
+          snippet?: string | null;
+          last_message_at: string;
+          is_unread?: boolean;
+          status?: 'open' | 'archived';
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          mailbox_id?: string;
+          provider_thread_id?: string;
+          subject?: string | null;
+          contact_id?: string | null;
+          campaign_id?: string | null;
+          snippet?: string | null;
+          last_message_at?: string;
+          is_unread?: boolean;
+          status?: 'open' | 'archived';
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      thread_messages: {
+        Row: {
+          id: string;
+          organization_id: string;
+          thread_id: string;
+          direction: 'in' | 'out';
+          kind: 'reply' | 'auto_reply' | 'bounce' | 'sent';
+          provider_message_id: string;
+          rfc_message_id: string | null;
+          in_reply_to: string | null;
+          from_email: string | null;
+          from_name: string | null;
+          to_emails: string[];
+          subject: string | null;
+          body_text: string | null;
+          sent_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          thread_id: string;
+          direction: 'in' | 'out';
+          kind: 'reply' | 'auto_reply' | 'bounce' | 'sent';
+          provider_message_id: string;
+          rfc_message_id?: string | null;
+          in_reply_to?: string | null;
+          from_email?: string | null;
+          from_name?: string | null;
+          to_emails?: string[];
+          subject?: string | null;
+          body_text?: string | null;
+          sent_at: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          thread_id?: string;
+          direction?: 'in' | 'out';
+          kind?: 'reply' | 'auto_reply' | 'bounce' | 'sent';
+          provider_message_id?: string;
+          rfc_message_id?: string | null;
+          in_reply_to?: string | null;
+          from_email?: string | null;
+          from_name?: string | null;
+          to_emails?: string[];
+          subject?: string | null;
+          body_text?: string | null;
+          sent_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -477,6 +660,12 @@ export type Database = {
         Args: { batch: number };
         Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
       };
+      claim_due_mailbox_syncs: {
+        Args: { batch: number; p_org?: string | null };
+        Returns: Database["public"]["Tables"]["mailbox_sync_state"]["Row"][];
+      };
+      stop_enrollments_on_reply: { Args: { p_org: string; p_contact: string; p_campaign?: string | null }; Returns: number };
+      refresh_sync_hotness: { Args: Record<string, never>; Returns: undefined };
       count_sent_today: { Args: { p_mailbox: string }; Returns: number };
       create_invitation: {
         Args: { org: string; invitee_email: string; invitee_role: Database["public"]["Enums"]["member_role"] };

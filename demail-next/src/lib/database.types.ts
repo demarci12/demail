@@ -1094,6 +1094,27 @@ export type Database = {
         Args: { p_campaign: string };
         Returns: { sent: number; opened: number; clicked: number; replied: number; bounced: number }[];
       };
+      campaign_message_stats: {
+        Args: { p_campaign: string };
+        Returns: {
+          step_id: string | null;
+          variant_id: string | null;
+          mailbox_id: string | null;
+          sent: number;
+          opened: number;
+          clicked: number;
+          replied: number;
+          bounced: number;
+        }[];
+      };
+      campaign_blocked_enrollments: {
+        Args: { p_campaign: string };
+        Returns: { contact_id: string; email: string; reason: string; total: number }[];
+      };
+      campaign_missing_merge_fields: {
+        Args: { p_campaign: string; p_fields: string[] };
+        Returns: { contact_id: string; email: string; missing: string[]; total: number }[];
+      };
       refresh_mailbox_health: { Args: Record<string, never>; Returns: number };
       claim_due_warmup_jobs: {
         Args: { batch: number };

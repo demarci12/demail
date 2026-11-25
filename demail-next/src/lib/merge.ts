@@ -38,6 +38,12 @@ export function renderTemplate(template: string, data: MergeData, escape: (value
   });
   return missing.size > 0 ? { ok: false, missing: [...missing] } : { ok: true, text };
 }
+// Names of tokens with no fallback, in first-seen order; these must hold a value for every contact.
+export function requiredFields(template: string): string[] {
+  const names = new Set<string>();
+  for (const m of template.matchAll(TOKEN)) if (m[2] === undefined) names.add(m[1]);
+  return [...names];
+}
 export function escapeHtml(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }

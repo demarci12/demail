@@ -71,6 +71,52 @@ function Preview({ subject: subjectTemplate, body: bodyTemplate, data, to }: { s
     </div>
   );
 }
+type Stat = { sent: number; opened: number; clicked: number; replied: number; bounced: number };
+type StatLine = { key: string; label: string; sub?: boolean; stat: Stat };
+const zeroStat = (): Stat => ({ sent: 0, opened: 0, clicked: 0, replied: 0, bounced: 0 });
+function addStat(into: Stat, r: Stat) {
+  into.sent += Number(r.sent);
+  into.opened += Number(r.opened);
+  into.clicked += Number(r.clicked);
+  into.replied += Number(r.replied);
+  into.bounced += Number(r.bounced);
+}
+function countPct(n: number, sent: number) {
+  return `${n} (${sent > 0 ? Math.round((n / sent) * 100) : 0}%)`;
+}
+function StatsTable({ title, first, lines }: { title: string; first: string; lines: StatLine[] }) {
+  return (
+    <div className="mt-4">
+      <h3 className="mb-2 text-sm font-medium">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-slate-500">
+              <th className="py-1.5 pr-3 font-normal">{first}</th>
+              <th className="py-1.5 pr-3 text-right font-normal">Sent</th>
+              <th className="py-1.5 pr-3 text-right font-normal">Opened</th>
+              <th className="py-1.5 pr-3 text-right font-normal">Clicked</th>
+              <th className="py-1.5 pr-3 text-right font-normal">Replied</th>
+              <th className="py-1.5 text-right font-normal">Bounced</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l) => (
+              <tr key={l.key} className={`border-b border-slate-100 ${l.sub ? "text-slate-600" : ""}`}>
+                <td className={`py-1.5 pr-3 ${l.sub ? "pl-4" : "font-medium"}`}>{l.label}</td>
+                <td className="py-1.5 pr-3 text-right">{l.stat.sent}</td>
+                <td className="py-1.5 pr-3 text-right">{countPct(l.stat.opened, l.stat.sent)}</td>
+                <td className="py-1.5 pr-3 text-right">{countPct(l.stat.clicked, l.stat.sent)}</td>
+                <td className="py-1.5 pr-3 text-right">{countPct(l.stat.replied, l.stat.sent)}</td>
+                <td className="py-1.5 text-right">{l.stat.bounced}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 export default async function CampaignPage({
   params,
   searchParams,
@@ -83,7 +129,7 @@ export default async function CampaignPage({
   const { supabase, org } = await getOrgContext();
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!campaign) notFound();
-  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }] = await Promise.all([
+  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }, { data: messageStats }] = await Promise.all([
     supabase.from("campaign_steps").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("position"),
     supabase.from("mailboxes").select("id, email, from_name, status").eq("organization_id", org.id).order("email"),
     supabase.from("campaign_mailboxes").select("mailbox_id").eq("campaign_id", id).eq("organization_id", org.id),
@@ -91,6 +137,7 @@ export default async function CampaignPage({
     supabase.from("campaign_contacts").select("status").eq("campaign_id", id).eq("organization_id", org.id).limit(10000),
     supabase.from("contacts").select("*").eq("organization_id", org.id).order("created_at").limit(1).maybeSingle(),
     supabase.rpc("campaign_engagement", { p_campaign: id }),
+    supabase.rpc("campaign_message_stats", { p_campaign: id }),
   ]);
   const stepIds = (steps ?? []).map((s) => s.id);
   const { data: variantRows } = stepIds.length
@@ -101,6 +148,49 @@ export default async function CampaignPage({
   const stats = engagement?.[0];
   const sentCount = Number(stats?.sent ?? 0);
   const pct = (n: number) => (sentCount > 0 ? `${Math.round((n / sentCount) * 100)}%` : "0%");
+  const statRows = messageStats ?? [];
+  const stepLines: StatLine[] = [];
+  const mailboxLines: StatLine[] = [];
+  if (statRows.some((r) => Number(r.sent) > 0)) {
+    const stepIndex = new Map((steps ?? []).map((s, i) => [s.id, i]));
+    (steps ?? []).forEach((s, i) => {
+      if (s.type !== "email") return;
+      const rows = statRows.filter((r) => r.step_id === s.id);
+      const total = zeroStat();
+      for (const r of rows) addStat(total, r);
+      const label = s.name?.trim() || (s.subject ?? "").slice(0, 60) || "Email";
+      stepLines.push({ key: s.id, label: `${i + 1}. ${label}`, stat: total });
+      const known = variantsByStep.get(s.id) ?? [];
+      if (known.length === 0 && rows.every((r) => r.variant_id === null)) return;
+      const variantStat = (vid: string | null) => {
+        const st = zeroStat();
+        for (const r of rows) if (r.variant_id === vid) addStat(st, r);
+        return st;
+      };
+      stepLines.push({ key: `${s.id}:A`, label: "Variant A", sub: true, stat: variantStat(null) });
+      for (const v of known) stepLines.push({ key: v.id, label: `Variant ${v.label}${v.active ? "" : " (archived)"}`, sub: true, stat: variantStat(v.id) });
+      const knownIds = new Set(known.map((v) => v.id));
+      const other = zeroStat();
+      for (const r of rows) if (r.variant_id !== null && !knownIds.has(r.variant_id)) addStat(other, r);
+      if (other.sent > 0) stepLines.push({ key: `${s.id}:removed`, label: "Removed variant", sub: true, stat: other });
+    });
+    const removedStep = zeroStat();
+    for (const r of statRows) if (r.step_id === null || !stepIndex.has(r.step_id)) addStat(removedStep, r);
+    if (removedStep.sent > 0) stepLines.push({ key: "removed-step", label: "Removed step", stat: removedStep });
+    const byMailbox = new Map<string, Stat>();
+    for (const r of statRows) {
+      const key = r.mailbox_id !== null && (mailboxes ?? []).some((m) => m.id === r.mailbox_id) ? r.mailbox_id : "removed";
+      const st = byMailbox.get(key) ?? zeroStat();
+      addStat(st, r);
+      byMailbox.set(key, st);
+    }
+    for (const m of mailboxes ?? []) {
+      const st = byMailbox.get(m.id);
+      if (st) mailboxLines.push({ key: m.id, label: m.email, stat: st });
+    }
+    const removedMailbox = byMailbox.get("removed");
+    if (removedMailbox) mailboxLines.push({ key: "removed-mailbox", label: "Removed mailbox", stat: removedMailbox });
+  }
   const chosen = new Set((selected ?? []).map((s) => s.mailbox_id));
   const counts: Record<string, number> = {};
   for (const e of enrollments ?? []) counts[e.status] = (counts[e.status] ?? 0) + 1;
@@ -156,6 +246,8 @@ export default async function CampaignPage({
             <dd className="text-lg font-medium">{Number(stats?.bounced ?? 0)}</dd>
           </div>
         </dl>
+        {stepLines.length > 0 && <StatsTable title="By step" first="Step" lines={stepLines} />}
+        {mailboxLines.length > 0 && <StatsTable title="By mailbox" first="Mailbox" lines={mailboxLines} />}
         <p className="mt-3 text-xs text-slate-500">Opens are an estimate. Privacy proxies and image blocking hide real reads, and automated link scanners are filtered out on a best effort basis.</p>
       </Card>
       <Card>

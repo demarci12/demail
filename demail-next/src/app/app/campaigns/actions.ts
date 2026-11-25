@@ -3,6 +3,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
+import { publicEnv } from "@/lib/env";
+import { SAMPLE_CONTACT, contactData, renderTemplate } from "@/lib/merge";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { sendStepTest } from "@/lib/send/test-send";
 const uuid = z.string().uuid();
 function back(id: string, key: "error" | "msg", message: string): never {
   return redirect(`/app/campaigns/${id}?${key}=${encodeURIComponent(message)}`);
@@ -227,6 +231,45 @@ export async function deleteVariant(id: string, variantId: string) {
   if (error) back(id, "error", "Could not delete the variant.");
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", "Variant deleted.");
+}
+const testSchema = z.object({ variant: z.union([z.literal("a"), uuid]), mailbox: uuid });
+// A test changes no campaign state, so it is allowed while the campaign is active.
+export async function sendTestStep(id: string, stepId: string, formData: FormData) {
+  const { supabase, org, user } = await editableCampaign(id);
+  const parsed = testSchema.safeParse({ variant: formData.get("variant") ?? "a", mailbox: formData.get("mailbox") });
+  if (!parsed.success || !uuid.safeParse(stepId).success) back(id, "error", "Choose a mailbox to send the test from.");
+  const { variant, mailbox: mailboxId } = parsed.data!;
+  const to = user.email?.trim();
+  if (!to) back(id, "error", "Your account has no email address to send the test to.");
+  const { data: step } = await supabase.from("campaign_steps").select("id, type, subject, body_plain").eq("id", stepId).eq("campaign_id", id).eq("organization_id", org.id).maybeSingle();
+  if (!step || step.type !== "email") back(id, "error", "Only email steps can be tested.");
+  let subjectTemplate = step!.subject ?? "";
+  let bodyTemplate = step!.body_plain ?? "";
+  if (variant !== "a") {
+    const { data: v } = await supabase.from("campaign_step_variants").select("subject, body_plain").eq("id", variant).eq("step_id", stepId).eq("organization_id", org.id).eq("active", true).maybeSingle();
+    if (!v) back(id, "error", "Variant not found.");
+    subjectTemplate = v!.subject;
+    bodyTemplate = v!.body_plain;
+  }
+  const { data: mailbox } = await supabase.from("mailboxes").select("*").eq("id", mailboxId).eq("organization_id", org.id).maybeSingle();
+  if (!mailbox) back(id, "error", "Mailbox not found.");
+  const { data: sample } = await supabase.from("contacts").select("*").eq("organization_id", org.id).order("created_at").limit(1).maybeSingle();
+  const data = sample ? contactData(sample) : SAMPLE_CONTACT;
+  const subject = renderTemplate(subjectTemplate, data);
+  const text = renderTemplate(bodyTemplate, data);
+  if (!subject.ok || !text.ok) {
+    const missing = [...new Set([...(subject.ok ? [] : subject.missing), ...(text.ok ? [] : text.missing)])];
+    back(id, "error", `The sample contact has no value for: ${missing.join(", ")}. Add a fallback such as {{first_name|there}}.`);
+  }
+  const outcome = await sendStepTest(createAdminClient(), mailbox!, {
+    to: to!,
+    subject: subject.text,
+    text: text.text,
+    testKey: `${stepId}:${variant}`,
+    baseUrl: publicEnv().NEXT_PUBLIC_APP_URL,
+  });
+  if (!outcome.ok) back(id, "error", outcome.message);
+  back(id, "msg", `Test sent to ${to}.`);
 }
 export async function enrollContacts(id: string, formData: FormData) {
   const { supabase, org } = await editableCampaign(id);

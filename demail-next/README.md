@@ -17,7 +17,11 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Open and click tracking per campaign, with bot and privacy-proxy filtering, a stats card on the campaign page and an activity timeline on each contact.
 - Deliverability: health bands, bounce and complaint events, SPF, DKIM and DMARC checks.
 - Warmup between your own Google and Microsoft mailboxes: a daily ramp, workday scheduling, human-delay replies, placement checks and an optional filter tag.
-Not included yet: SMTP/IMAP mailboxes, AI, enrichment, CRM sync. This release builds roadmap Phase 4 part 1 (tracking, deliverability, warmup); Phase 2 (richer campaigns) is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- A/B/Z variants for email steps, split evenly per enrollment, with results per variant.
+- Campaign analytics by step, by variant and by mailbox: sent, opened, clicked, replied and bounced.
+- A pre-launch review of senders, blank merge fields and unsubscribed or suppressed enrollments.
+- Test sends of a saved step or variant to your own address.
+Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, AI, enrichment, CRM sync. This release builds roadmap Phase 2 part 1 (A/B variants, per-step and per-mailbox analytics, pre-launch review, test send); Phase 5 part 1 is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 
@@ -127,6 +131,18 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Caveats.** Apple Mail Privacy Protection and image blocking hide real opens, so open rates are an estimate. Click tracking rewrites links, which can affect deliverability, and nothing here guarantees inbox placement.
 - **Data.** Events keep the message, contact, campaign, a user agent cut to 200 characters and the URL. No IP address is stored. Each message stores at most 200 events, and `purge_old_events()` deletes events older than 180 days.
 
+## A/B variants and campaign reports
+- **Variants.** An email step's own subject and body are variant A. Add variants B to Z on the campaign page. Each enrollment gets one variant per step, split evenly and decided from the enrollment and the step, so a retry sends the same variant. Variants are plain text.
+- **Editing.** Variants, like steps, can only be changed while the campaign is paused or not yet launched. Deleting a variant that already sent archives it, so its results keep their label.
+- **Reports.** The Results card shows totals, then tables by step (with a row per variant) and by mailbox.
+- **Reply attribution.** A thread's first reply is credited to the last campaign message sent to that contact at or before the reply. Only Google and Microsoft mailboxes report replies, so Resend senders show none.
+- **Bounce attribution.** Bounces come from `delivery_events` matched to a sent message.
+- **Opens.** Open counts remain an estimate, for the reasons in Open and click tracking.
+## Pre-launch review and test sends
+- **Review.** Open Review on a campaign (`/app/campaigns/<id>/review`). It lists the email step count, active enrollments, and each sender with its status and health band, flagging no sender, a disconnected or paused mailbox, and a throttled or paused band. For each email step and variant it lists enrolled contacts with no value for a merge field that has no fallback (up to 20, with the total), and it lists enrolled contacts who are unsubscribed or suppressed.
+- **It does not block launch.** Launch still checks only for an email step and a sender. When its turn comes, an enrollment with a blank merge field fails and an unsubscribed or suppressed one is skipped, as before.
+- **Test sends.** Each email step has Send test. It renders the step or chosen variant against the same sample contact as the preview and sends it from the mailbox you pick, only to your own sign-in address, with the subject starting `[Test]`.
+- **What a test is not.** A test has no open or click tracking, is not stored as a campaign message and does not count in the results. Its unsubscribe links point at a placeholder that changes nothing. Tests are not counted in `INSTANCE_DAILY_SEND_CAP`, but tests from a Resend sender do count toward Resend's own daily quota. Two clicks within the same minute send once through Resend.
 ## Deliverability
 Bands and checks are guidance based on your own sending. Nothing here guarantees inbox placement or improves a sender reputation.
 - **Window and rates.** Each mailbox is scored over the last 7 days. Bounce and complaint rates divide by the larger of messages sent and 20, so a new mailbox with a few bounces still trips. `refresh_mailbox_health()` runs every 5 minutes from `schedule.sql`.
@@ -151,6 +167,7 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 - **What is not sent.** Warmup mail never describes itself, carries no shared footer and no fixed subject prefix. Every message passes a wording check before sending. It is never sent to contacts and never to a mailbox of another workspace or a Resend sender.
 - **Filter tag.** Off by default. When you turn it on for a mailbox, the warmup mail it receives ends with a random tag such as `dm-k3f9x2ab`, unique to that mailbox, so you can filter it. Turning it off keeps the tag for later. The Mailboxes page shows the Gmail filter (Has the words: the tag, Skip the Inbox, Never send to spam) and an Outlook rule hint. Nothing else carries the tag.
 - **Provider limits.** Warmup volume counts toward Gmail and Microsoft sending limits in addition to the cold daily limit of the mailbox.
+- **Library edits.** A conversation's key comes from its theme, subject and first message. An edited conversation keeps its old key in `previousKeys`, so threads in flight on it continue and the 60 day repeat window still holds.
 - **Self-hosted limit.** An instance only warms between its own mailboxes in one workspace. A shared public pool is left for later.
 ## Design decisions
 

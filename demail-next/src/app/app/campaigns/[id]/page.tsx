@@ -7,7 +7,7 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { SAMPLE_CONTACT, contactData, renderTemplate, type MergeData } from "@/lib/merge";
 import { CampaignFields } from "../settings-fields";
 import { MergeInsert } from "../merge-insert";
-import { addStep, addVariant, deleteStep, deleteVariant, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, updateCampaign, updateStep, updateVariant } from "../actions";
+import { addStep, addVariant, deleteStep, deleteVariant, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, sendTestStep, updateCampaign, updateStep, updateVariant } from "../actions";
 function waitParts(seconds: number | null) {
   const s = seconds ?? 86400;
   if (s % 86400 === 0) return { amount: s / 86400, unit: "days" };
@@ -126,7 +126,7 @@ export default async function CampaignPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const { supabase, org } = await getOrgContext();
+  const { supabase, org, user } = await getOrgContext();
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!campaign) notFound();
   const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }, { data: messageStats }] = await Promise.all([
@@ -196,6 +196,7 @@ export default async function CampaignPage({
   for (const e of enrollments ?? []) counts[e.status] = (counts[e.status] ?? 0) + 1;
   const sampleData = sample ? contactData(sample) : SAMPLE_CONTACT;
   const locked = campaign.status === "active";
+  const testMailboxes = (mailboxes ?? []).filter((m) => m.status === "active").sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id)));
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <PageHeader
@@ -214,6 +215,9 @@ export default async function CampaignPage({
                 <Button type="submit">{campaign.status === "paused" ? "Resume" : "Launch"}</Button>
               </form>
             )}
+            <Link href={`/app/campaigns/${id}/review`} className="text-sm text-sky-700">
+              Review
+            </Link>
             <Link href="/app/campaigns" className="text-sm text-sky-700">
               Back
             </Link>
@@ -317,6 +321,38 @@ export default async function CampaignPage({
                       Variant {v.label} (archived)
                     </p>
                   ))}
+                {s.type === "email" && (
+                  <form action={sendTestStep.bind(null, id, s.id)} className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-200 pt-3">
+                    {stepVariants.some((v) => v.active) && (
+                      <Field label="Variant">
+                        <Select name="variant" defaultValue="a">
+                          <option value="a">A</option>
+                          {stepVariants
+                            .filter((v) => v.active)
+                            .map((v) => (
+                              <option key={v.id} value={v.id}>
+                                {v.label}
+                              </option>
+                            ))}
+                        </Select>
+                      </Field>
+                    )}
+                    <Field label="Send from">
+                      <Select name="mailbox" required defaultValue={testMailboxes[0]?.id ?? ""}>
+                        {testMailboxes.length === 0 && <option value="">No active mailbox</option>}
+                        {testMailboxes.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.email}
+                            {chosen.has(m.id) ? " (sender)" : ""}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Button type="submit" variant="secondary">
+                      Send test to {user.email ?? "you"}
+                    </Button>
+                  </form>
+                )}
                 {s.type === "email" && (
                   <form action={addVariant.bind(null, id, s.id)} className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-3">
                     <h3 className="text-sm font-medium">Add variant</h3>

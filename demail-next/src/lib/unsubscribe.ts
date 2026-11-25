@@ -22,3 +22,7 @@ export function verifyUnsubscribe(token: string): { orgId: string; contactId: st
 export function unsubscribeUrl(baseUrl: string, orgId: string, contactId: string) {
   return `${baseUrl.replace(/\/$/, "")}/unsubscribe/${signUnsubscribe(orgId, contactId)}`;
 }
+
+export function oneClickUnsubscribeUrl(baseUrl: string, orgId: string, contactId: string) {
+  return `${baseUrl.replace(/\/$/, "")}/api/unsubscribe/${signUnsubscribe(orgId, contactId)}`;
+}

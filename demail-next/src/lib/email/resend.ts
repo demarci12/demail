@@ -9,6 +9,7 @@ export type OutgoingMail = {
   text: string;
   html?: string;
   unsubscribeUrl: string;
+  oneClickUrl: string;
   idempotencyKey: string;
 };
 export type SendOutcome =
@@ -28,7 +29,7 @@ export async function sendMail(mail: OutgoingMail): Promise<SendOutcome> {
         text: mail.text,
         html: mail.html,
         headers: {
-          "List-Unsubscribe": `<${mail.unsubscribeUrl}>`,
+          "List-Unsubscribe": `<${mail.oneClickUrl}>`,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
       },

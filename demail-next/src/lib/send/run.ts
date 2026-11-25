@@ -3,7 +3,7 @@ import { serverEnv, publicEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/database.types";
 import { contactData, escapeHtml, renderTemplate } from "@/lib/merge";
-import { unsubscribeUrl } from "@/lib/unsubscribe";
+import { oneClickUnsubscribeUrl, unsubscribeUrl } from "@/lib/unsubscribe";
 import { sendMail } from "@/lib/email/resend";
 import { localDayStart, nextWindowStart } from "./schedule";
 type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
@@ -232,6 +232,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       text: outText,
       html: outHtml,
       unsubscribeUrl: link,
+      oneClickUrl: oneClickUnsubscribeUrl(baseUrl, e.organization_id, contact.id),
       idempotencyKey: key,
     });
     if (!outcome.ok) {
@@ -247,7 +248,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     mailboxSent.set(chosen.id, (mailboxSent.get(chosen.id) ?? 0) + 1);
     mailboxLast.set(chosen.id, Date.now());
     campaignSent.set(campaign.id, (campaignSent.get(campaign.id) ?? 0) + 1);
-    await admin.from("messages").insert({
+    const { error: insertError } = await admin.from("messages").insert({
       organization_id: e.organization_id,
       campaign_id: e.campaign_id,
       contact_id: e.contact_id,
@@ -259,6 +260,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       subject: subject.text,
       sent_at: new Date().toISOString(),
     });
+    if (insertError) console.error("messages insert failed after send", { enrollment: e.id, resend_id: outcome.id, message: insertError.message });
     await advance(e, steps, step, { attempts: 0, error: null, mailbox_id: chosen.id, last_sent_at: new Date().toISOString() });
     result.sent++;
   }

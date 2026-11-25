@@ -20,12 +20,18 @@ Still open:
 Next: Phase 2 (richer campaigns) can now use reply events, then Phase 4.
 
 ## Phase 4: deliverability
-
-- Warmup between owned mailboxes. Needs phase 3 mailboxes and reply sync.
+Part 1 shipped:
+- Open and click tracking with bot and privacy-proxy filtering.
+- Deliverability: bounce and complaint events, health bands that throttle or pause cold sending, SPF, DKIM and DMARC checks.
+- Warmup between your own Google and Microsoft mailboxes, with a ramp, human-delay replies and placement checks.
+Still open:
 - Blacklist (DNSBL) monitoring with auto-pause.
-- Custom tracking domain, open and click tracking with bot filtering.
+- Custom tracking domain.
 - Mailbox ramp-up schedule for cold sending.
-
+- Gmail rescue from spam, which needs the `gmail.modify` scope.
+- A public warmup pool across instances.
+- An AI content bank next to the hand-written library.
+Next: Phase 2 (richer campaigns).
 ## Phase 5: data, AI and channels
 
 - AI writing, reply drafts and classification (bring your own key).

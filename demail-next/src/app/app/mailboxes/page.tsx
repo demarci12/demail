@@ -1,15 +1,38 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
 import { oauthProviders } from "@/lib/env";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { addMailbox, deleteMailbox, setMailboxStatus } from "./actions";
+import { localDayStart } from "@/lib/send/schedule";
+import { dailyTarget, type Band } from "@/lib/warmup/plan";
+import { addMailbox, deleteMailbox, setMailboxStatus, setWarmup, setWarmupFilterTag, setWarmupWindow } from "./actions";
+const BAND_STYLE: Record<string, string> = {
+  healthy: "bg-emerald-100 text-emerald-800",
+  watch: "bg-amber-100 text-amber-800",
+  throttled: "bg-orange-100 text-orange-800",
+  paused: "bg-red-100 text-red-800",
+};
 export default async function MailboxesPage({ searchParams }: { searchParams: Promise<{ error?: string; message?: string }> }) {
   const { error, message } = await searchParams;
   const providers = oauthProviders();
   const { supabase, org, canManage } = await getOrgContext();
   const { data: mailboxes } = await supabase.from("mailboxes").select("*").eq("organization_id", org.id).order("email");
+  const warmable = (mailboxes ?? []).filter((m) => m.provider !== "resend");
+  const now = new Date();
+  const [{ data: health }, { data: recent }] = await Promise.all([
+    supabase.from("mailbox_health").select("mailbox_id, band, band_changed_at").eq("organization_id", org.id),
+    warmable.length === 0
+      ? Promise.resolve({ data: [] as { sender_mailbox_id: string; sent_at: string }[] })
+      : supabase
+          .from("warmup_messages")
+          .select("sender_mailbox_id, sent_at")
+          .eq("organization_id", org.id)
+          .gte("sent_at", new Date(now.getTime() - 36 * 3_600_000).toISOString())
+          .limit(2000),
+  ]);
+  const healthById = new Map((health ?? []).map((h) => [h.mailbox_id, h]));
   return (
     <div className="flex max-w-4xl flex-col gap-4">
       <PageHeader title="Mailboxes" />
@@ -46,8 +69,14 @@ export default async function MailboxesPage({ searchParams }: { searchParams: Pr
             </tr>
           </thead>
           <tbody>
-            {(mailboxes ?? []).map((m) => (
-              <tr key={m.id} className="border-b border-slate-100 last:border-0">
+            {(mailboxes ?? []).map((m) => {
+              const h = healthById.get(m.id);
+              const band = (h?.band ?? "healthy") as Band;
+              const dayStart = localDayStart(now, m.timezone).getTime();
+              const sentToday = (recent ?? []).filter((x) => x.sender_mailbox_id === m.id && new Date(x.sent_at).getTime() >= dayStart).length;
+              return (
+              <Fragment key={m.id}>
+              <tr className={m.provider === "resend" ? "border-b border-slate-100 last:border-0" : "border-slate-100"}>
                 <td className="p-3">
                   {m.from_name ? `${m.from_name} ` : ""}
                   <span className="text-slate-500">{m.email}</span>
@@ -83,7 +112,60 @@ export default async function MailboxesPage({ searchParams }: { searchParams: Pr
                   )}
                 </td>
               </tr>
-            ))}
+              {m.provider !== "resend" && (
+                <tr className="border-b border-slate-100 last:border-0">
+                  <td colSpan={7} className="flex flex-col gap-2 px-3 pb-3 text-xs text-slate-600">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${BAND_STYLE[band]}`}>{band}</span>
+                      <span>Warmup {m.warmup_enabled ? "on" : "off"}</span>
+                      {m.warmup_enabled && (
+                        <span>Today {sentToday} / {dailyTarget(m.warmup_started_at, now, m.timezone, band, h?.band_changed_at)} sent</span>
+                      )}
+                      {canManage && (
+                        <>
+                          <form action={setWarmup.bind(null, m.id, !m.warmup_enabled)}>
+                            <Button type="submit" variant="secondary">
+                              {m.warmup_enabled ? "Turn warmup off" : "Turn warmup on"}
+                            </Button>
+                          </form>
+                          <form action={setWarmupFilterTag.bind(null, m.id, !m.warmup_filter_tag_enabled)}>
+                            <Button type="submit" variant="secondary">
+                              {m.warmup_filter_tag_enabled ? "Filter tag: on" : "Filter tag: off"}
+                            </Button>
+                          </form>
+                        </>
+                      )}
+                    </div>
+                    {canManage && (
+                      <form action={setWarmupWindow.bind(null, m.id)} className="flex flex-wrap items-end gap-2">
+                        <Field label="Workday start">
+                          <Input name="warmup_start" type="time" defaultValue={m.warmup_start.slice(0, 5)} required />
+                        </Field>
+                        <Field label="Workday end">
+                          <Input name="warmup_end" type="time" defaultValue={m.warmup_end.slice(0, 5)} required />
+                        </Field>
+                        <Field label="Timezone">
+                          <Input name="timezone" defaultValue={m.timezone} maxLength={64} required />
+                        </Field>
+                        <Button type="submit" variant="secondary">
+                          Save workday
+                        </Button>
+                      </form>
+                    )}
+                    {m.warmup_filter_tag_enabled && m.warmup_filter_tag && (
+                      <div className="flex flex-col gap-1">
+                        <div>
+                          Warmup mail sent to this mailbox ends with <code className="rounded bg-slate-100 px-1">{m.warmup_filter_tag}</code>. In Gmail, create a filter with Has the words set to that tag, then choose Skip the Inbox and Never send to spam. In Outlook, add a rule on messages that include the tag in the body and move them to a folder.
+                        </div>
+                      </div>
+                    )}
+                    <div className="text-slate-500">Warmup runs on weekdays inside the workday, outside 12:00 to 13:00, between the active Google and Microsoft mailboxes of this workspace. It counts toward your provider sending limits on top of the cold daily limit.</div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
             {(mailboxes ?? []).length === 0 && (
               <tr>
                 <td colSpan={7} className="p-4 text-slate-500">

@@ -15,7 +15,9 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Reply sync by polling, stop on reply, and bounce suppression.
 - A unibox: a threaded inbox of replies to your campaign mail across connected mailboxes, with live updates through Supabase Realtime, reply, compose, archive and read state.
 - Open and click tracking per campaign, with bot and privacy-proxy filtering, a stats card on the campaign page and an activity timeline on each contact.
-Not included yet: warmup, open and click tracking, SMTP/IMAP mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Deliverability: health bands, bounce and complaint events, SPF, DKIM and DMARC checks.
+- Warmup between your own Google and Microsoft mailboxes: a daily ramp, workday scheduling, human-delay replies, placement checks and an optional filter tag.
+Not included yet: SMTP/IMAP mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 
@@ -35,7 +37,7 @@ Not included yet: warmup, open and click tracking, SMTP/IMAP mailboxes, AI, enri
 4. **Configure Auth.** In Authentication, URL configuration, set the site URL to your Vercel URL and add `<your URL>/auth/callback` to the redirect allow list. Keep email confirmation on for a public instance. Switch it off only for a private trial.
 5. **Set up Resend.** Create an account, add and verify your sending domain (DNS records SPF and DKIM), then create an API key. Mailbox addresses in Demail must belong to that verified domain.
 6. **Deploy to Vercel.** Import the repository, set the root directory to `demail-next`, and add the environment variables from the table below. Generate the two secrets with `openssl rand -hex 32`. Deploy.
-7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules two jobs every minute: `POST /api/cron/send` and `POST /api/cron/sync`. It also schedules `demail-health` (SQL, every 5 minutes) and `demail-domains` (`POST /api/cron/domains`, hourly).
+7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules two jobs every minute: `POST /api/cron/send` and `POST /api/cron/sync`. It also schedules `demail-warmup` (`POST /api/cron/warmup`, every minute), `demail-health` (SQL, every 5 minutes: health bands and warmup planning), `demail-domains` (`POST /api/cron/domains`, hourly) and `demail-purge` (SQL, daily).
 8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
 
 If you skip step 7, `vercel.json` still calls the same route once a day. That is enough to try the app, not to send on a schedule.
@@ -63,6 +65,7 @@ Also listed with comments in `.env.example`.
 | `MICROSOFT_CLIENT_SECRET` | no | Microsoft Entra client secret value |
 | `MICROSOFT_TENANT` | no | Entra tenant id, or `common` (default), `organizations` or `consumers` |
 | `RESEND_WEBHOOK_SECRET` | no | Resend webhook signing secret (`whsec_...`). Without it `/api/webhooks/resend` answers 503 |
+| `WARMUP_BATCH_SIZE` | no | Warmup jobs run per tick, default 10, max 50 |
 | `SYNC_BATCH_SIZE` | no | Mailboxes read per sync tick, default 5, max 50 |
 | `SYNC_MESSAGES_PER_MAILBOX` | no | Messages read per mailbox per tick, default 50, max 200 |
 
@@ -138,6 +141,17 @@ Bands and checks are guidance based on your own sending. Nothing here guarantees
 - **Resend webhook.** In the Resend dashboard add a webhook at `<NEXT_PUBLIC_APP_URL>/api/webhooks/resend` for `email.bounced` and `email.complained`, then set `RESEND_WEBHOOK_SECRET` to its signing secret. The Svix signature is verified and timestamps older than 5 minutes are rejected.
 - **Domain checks.** `/app/deliverability` lists the domains of your mailboxes and any you add. `/api/cron/domains` rechecks each one every 24 hours, and Check now runs it at most once a minute per domain. SPF passes with a single record that ends in `~all` or `-all` and includes the provider (Google, Microsoft). DMARC needs a `v=DMARC1` record with a policy. The page shows the records to publish, merging the provider include into an existing SPF record.
 - **DKIM caveat.** The DKIM selector is chosen by the provider and cannot be discovered from DNS. The check tries `google`, `selector1`, `selector2`, `resend` and the selector you set, and reports unknown when none answers.
+## Warmup
+Warmup sends ordinary conversations between the Google and Microsoft mailboxes of one workspace. Turn it on per mailbox on the Mailboxes page. It needs at least two active Google or Microsoft mailboxes with warmup on. Placement results describe what happened to the mail. Nothing here guarantees inbox placement or improves a sender reputation.
+- **How it works.** `plan_warmup_jobs()` runs every 5 minutes from `schedule.sql` and plans the day's start jobs for each mailbox at random times inside its workday. `/api/cron/warmup` runs every minute, claims due jobs with `FOR UPDATE SKIP LOCKED` and executes them. A start job picks a partner among the other enabled mailboxes, avoiding the last 5 partners, and a hand-written conversation neither mailbox saw in the last 60 days, falling back to the least recently seen one. Mail goes out through the mailbox's own Gmail or Graph API as plain text with no tracking and no unsubscribe footer.
+- **Ramp.** 10 messages a day on the first day, plus 1 a day, up to 40. About 60% of the day's volume starts threads and replies make up the rest. A throttled mailbox halves the target and holds the ramp, and a paused one sends nothing. If warmup was off for more than 7 days the ramp restarts.
+- **Workday.** Monday to Friday, 09:00 to 17:30 in the mailbox timezone by default, skipping 12:00 to 13:00. At least 4 minutes pass between two warmup sends from one mailbox. Change the hours and timezone on the Mailboxes page.
+- **Replies.** Minutes after each send a check job looks for the message in the recipient mailbox (up to 5 tries, 5 minutes apart) and records inbox, spam, other or missing. When it arrived the recipient replies with probability 0.7 (first reply) or 0.5 (later ones), 45 minutes to 5 hours later and inside its own workday. Threads have four turns.
+- **Spam handling.** A Microsoft message found in junk is moved to the inbox. Gmail needs the `gmail.modify` scope, which Demail does not request, so Gmail only records placement. If 30% or more of at least 10 checked messages from a mailbox landed in spam over 7 days, its health band is at least Watch.
+- **What is not sent.** Warmup mail never describes itself, carries no shared footer and no fixed subject prefix. Every message passes a wording check before sending. It is never sent to contacts and never to a mailbox of another workspace or a Resend sender.
+- **Filter tag.** Off by default. When you turn it on for a mailbox, the warmup mail it receives ends with a random tag such as `dm-k3f9x2ab`, unique to that mailbox, so you can filter it. Turning it off keeps the tag for later. The Mailboxes page shows the Gmail filter (Has the words: the tag, Skip the Inbox, Never send to spam) and an Outlook rule hint. Nothing else carries the tag.
+- **Provider limits.** Warmup volume counts toward Gmail and Microsoft sending limits in addition to the cold daily limit of the mailbox.
+- **Self-hosted limit.** An instance only warms between its own mailboxes in one workspace. A shared public pool is left for later.
 ## Design decisions
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.
@@ -145,7 +159,7 @@ Bands and checks are guidance based on your own sending. Nothing here guarantees
 - **Long-lived connections.** IMAP idle and pooled SMTP connections cannot run on Vercel or Supabase Edge Functions, so SMTP and IMAP mailboxes are not supported. Gmail and Microsoft Graph are plain HTTPS APIs and work from a serverless function.
 - **Mailbox encryption.** OAuth tokens are sealed in the app with AES-256-GCM using `MAILBOX_ENCRYPTION_KEY` and stored in `mailbox_credentials`, a table with row level security, no policies and no grants for signed-in users, so only the service role reads it. Supabase Vault was not used: it needs one RPC per read and is awkward to dump and restore for self-hosts, while here a database dump alone is useless without the key. Resend-only installs need no key.
 - **Polling over push.** Gmail watch needs a Pub/Sub topic and a renewal every 7 days, and Graph subscriptions need a public validated webhook renewed every 3 days. Both work against a free, easy install, so replies are polled. Push could be added later as an accelerator.
-- **Cron split.** Supabase `pg_cron` runs `demail-send` and `demail-sync` every minute, each bounded to stay under the 60 second Vercel Hobby limit. Vercel keeps a daily fallback call for each.
+- **Cron split.** Work that needs the app (mail APIs, tokens) is an HTTP job: `demail-send`, `demail-sync` and `demail-warmup` every minute and `demail-domains` hourly, each bounded to stay under the 60 second Vercel Hobby limit. Work that is only SQL (`demail-health` every 5 minutes, `demail-purge` daily) runs inside Postgres with no HTTP call. Vercel keeps its two daily fallback crons and no more.
 - **Realtime.** `threads` and `thread_messages` are in the `supabase_realtime` publication. The unibox subscribes and refreshes the page at most once a second. Row level security decides what each user receives.
 - **Sender model.** One Resend key per instance. A mailbox row is a sender identity, not a credential store.
 - **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. The service role key is used only in `src/lib/supabase/admin.ts`.
@@ -167,6 +181,7 @@ If the key is lost and there is no previous key, stored tokens cannot be opened 
 - Reply detection polls, so a reply can take up to a minute (active campaigns) or ten minutes (idle mailboxes) to be seen.
 - Resend free allows 100 mails a day and 3000 a month, and the instance cap follows that.
 - Vercel limits function time, so each tick sends a small batch. Raise `SEND_BATCH_SIZE` only on a plan with longer limits.
+- Warmup only runs between mailboxes of one workspace on this instance, and Gmail mail found in spam is not moved because that needs the `gmail.modify` scope.
 - Supabase free projects pause after inactivity, which also pauses the scheduler.
 - Migrations were checked against an in-memory Postgres, not a live Supabase project. The `schedule.sql` extensions run for the first time in your project.
 

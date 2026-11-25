@@ -37,6 +37,7 @@ const mailSchema = z.object({
   MICROSOFT_CLIENT_SECRET: z.string().min(1).optional(),
   MICROSOFT_TENANT: z.string().min(1).default("common"),
   SYNC_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(5),
+  WARMUP_BATCH_SIZE: z.coerce.number().int().min(1).max(50).default(10),
   SYNC_MESSAGES_PER_MAILBOX: z.coerce.number().int().min(1).max(200).default(50),
 });
 // Google and Microsoft mailbox settings, all optional so Resend-only installs need nothing new.

@@ -192,6 +192,13 @@ export type Database = {
           last_synced_at: string | null;
           last_error: string | null;
           provider_account_id: string | null;
+          warmup_enabled: boolean;
+          warmup_started_at: string | null;
+          warmup_disabled_at: string | null;
+          warmup_start: string;
+          warmup_end: string;
+          warmup_filter_tag_enabled: boolean;
+          warmup_filter_tag: string | null;
         };
         Insert: {
           id?: string;
@@ -212,6 +219,13 @@ export type Database = {
           last_synced_at?: string | null;
           last_error?: string | null;
           provider_account_id?: string | null;
+          warmup_enabled?: boolean;
+          warmup_started_at?: string | null;
+          warmup_disabled_at?: string | null;
+          warmup_start?: string;
+          warmup_end?: string;
+          warmup_filter_tag_enabled?: boolean;
+          warmup_filter_tag?: string | null;
         };
         Update: {
           id?: string;
@@ -232,6 +246,13 @@ export type Database = {
           last_synced_at?: string | null;
           last_error?: string | null;
           provider_account_id?: string | null;
+          warmup_enabled?: boolean;
+          warmup_started_at?: string | null;
+          warmup_disabled_at?: string | null;
+          warmup_start?: string;
+          warmup_end?: string;
+          warmup_filter_tag_enabled?: boolean;
+          warmup_filter_tag?: string | null;
         };
         Relationships: [];
       };
@@ -745,6 +766,153 @@ export type Database = {
         };
         Relationships: [];
       };
+      warmup_threads: {
+        Row: {
+          id: string;
+          organization_id: string;
+          library_key: string;
+          initiator_mailbox_id: string;
+          partner_mailbox_id: string;
+          turns_total: number;
+          turns_sent: number;
+          status: 'open' | 'closed';
+          created_at: string;
+          last_turn_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          library_key: string;
+          initiator_mailbox_id: string;
+          partner_mailbox_id: string;
+          turns_total: number;
+          turns_sent?: number;
+          status?: 'open' | 'closed';
+          created_at?: string;
+          last_turn_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          library_key?: string;
+          initiator_mailbox_id?: string;
+          partner_mailbox_id?: string;
+          turns_total?: number;
+          turns_sent?: number;
+          status?: 'open' | 'closed';
+          created_at?: string;
+          last_turn_at?: string | null;
+        };
+        Relationships: [];
+      };
+      warmup_messages: {
+        Row: {
+          id: string;
+          organization_id: string;
+          thread_id: string;
+          turn: number;
+          sender_mailbox_id: string;
+          recipient_mailbox_id: string;
+          rfc_message_id: string | null;
+          provider_message_id: string | null;
+          provider_thread_id: string | null;
+          recipient_provider_message_id: string | null;
+          recipient_provider_thread_id: string | null;
+          subject: string;
+          sent_at: string;
+          placement: 'inbox' | 'spam' | 'other' | 'missing' | null;
+          placement_checked_at: string | null;
+          check_attempts: number;
+          rescued: boolean;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          thread_id: string;
+          turn: number;
+          sender_mailbox_id: string;
+          recipient_mailbox_id: string;
+          rfc_message_id?: string | null;
+          provider_message_id?: string | null;
+          provider_thread_id?: string | null;
+          recipient_provider_message_id?: string | null;
+          recipient_provider_thread_id?: string | null;
+          subject: string;
+          sent_at?: string;
+          placement?: 'inbox' | 'spam' | 'other' | 'missing' | null;
+          placement_checked_at?: string | null;
+          check_attempts?: number;
+          rescued?: boolean;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          thread_id?: string;
+          turn?: number;
+          sender_mailbox_id?: string;
+          recipient_mailbox_id?: string;
+          rfc_message_id?: string | null;
+          provider_message_id?: string | null;
+          provider_thread_id?: string | null;
+          recipient_provider_message_id?: string | null;
+          recipient_provider_thread_id?: string | null;
+          subject?: string;
+          sent_at?: string;
+          placement?: 'inbox' | 'spam' | 'other' | 'missing' | null;
+          placement_checked_at?: string | null;
+          check_attempts?: number;
+          rescued?: boolean;
+        };
+        Relationships: [];
+      };
+      warmup_jobs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          mailbox_id: string;
+          kind: 'start' | 'check' | 'reply';
+          thread_id: string | null;
+          message_id: string | null;
+          plan_day: string | null;
+          slot: number | null;
+          run_at: string;
+          status: 'pending' | 'done' | 'failed' | 'skipped';
+          attempts: number;
+          error: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          mailbox_id: string;
+          kind: 'start' | 'check' | 'reply';
+          thread_id?: string | null;
+          message_id?: string | null;
+          plan_day?: string | null;
+          slot?: number | null;
+          run_at: string;
+          status?: 'pending' | 'done' | 'failed' | 'skipped';
+          attempts?: number;
+          error?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          mailbox_id?: string;
+          kind?: 'start' | 'check' | 'reply';
+          thread_id?: string | null;
+          message_id?: string | null;
+          plan_day?: string | null;
+          slot?: number | null;
+          run_at?: string;
+          status?: 'pending' | 'done' | 'failed' | 'skipped';
+          attempts?: number;
+          error?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       mailbox_health: {
         Row: {
           mailbox_id: string;
@@ -888,6 +1056,11 @@ export type Database = {
         Returns: { sent: number; opened: number; clicked: number; replied: number; bounced: number }[];
       };
       refresh_mailbox_health: { Args: Record<string, never>; Returns: number };
+      claim_due_warmup_jobs: {
+        Args: { batch: number };
+        Returns: Database["public"]["Tables"]["warmup_jobs"]["Row"][];
+      };
+      plan_warmup_jobs: { Args: { p_now?: string }; Returns: number };
       purge_old_events: { Args: Record<string, never>; Returns: number };
       count_sent_today: { Args: { p_mailbox: string }; Returns: number };
       create_invitation: {

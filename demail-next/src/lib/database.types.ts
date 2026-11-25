@@ -248,6 +248,8 @@ export type Database = {
           send_start: string;
           send_end: string;
           unsubscribe_header: boolean;
+          track_opens: boolean;
+          track_clicks: boolean;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -264,6 +266,8 @@ export type Database = {
           send_start?: string;
           send_end?: string;
           unsubscribe_header?: boolean;
+          track_opens?: boolean;
+          track_clicks?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -280,6 +284,8 @@ export type Database = {
           send_start?: string;
           send_end?: string;
           unsubscribe_header?: boolean;
+          track_opens?: boolean;
+          track_clicks?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -652,6 +658,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      tracking_events: {
+        Row: {
+          id: string;
+          organization_id: string;
+          message_id: string;
+          contact_id: string | null;
+          campaign_id: string | null;
+          mailbox_id: string | null;
+          type: 'open' | 'click';
+          url: string | null;
+          counted: boolean;
+          filter_reason: 'bot' | 'prefetch' | 'privacy_proxy' | 'too_early' | 'own_read' | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          message_id: string;
+          contact_id?: string | null;
+          campaign_id?: string | null;
+          mailbox_id?: string | null;
+          type: 'open' | 'click';
+          url?: string | null;
+          counted: boolean;
+          filter_reason?: 'bot' | 'prefetch' | 'privacy_proxy' | 'too_early' | 'own_read' | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          message_id?: string;
+          contact_id?: string | null;
+          campaign_id?: string | null;
+          mailbox_id?: string | null;
+          type?: 'open' | 'click';
+          url?: string | null;
+          counted?: boolean;
+          filter_reason?: 'bot' | 'prefetch' | 'privacy_proxy' | 'too_early' | 'own_read' | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -666,6 +717,15 @@ export type Database = {
       };
       stop_enrollments_on_reply: { Args: { p_org: string; p_contact: string; p_campaign?: string | null }; Returns: number };
       refresh_sync_hotness: { Args: Record<string, never>; Returns: undefined };
+      record_tracking_event: {
+        Args: { p_message: string; p_type: string; p_url: string | null; p_counted: boolean; p_reason: string | null; p_ua: string | null };
+        Returns: boolean;
+      };
+      campaign_engagement: {
+        Args: { p_campaign: string };
+        Returns: { sent: number; opened: number; clicked: number; replied: number; bounced: number }[];
+      };
+      purge_old_events: { Args: Record<string, never>; Returns: number };
       count_sent_today: { Args: { p_mailbox: string }; Returns: number };
       create_invitation: {
         Args: { org: string; invitee_email: string; invitee_role: Database["public"]["Enums"]["member_role"] };

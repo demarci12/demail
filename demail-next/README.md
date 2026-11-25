@@ -14,6 +14,7 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Google and Microsoft mailboxes through OAuth, with tokens sealed by the app before they reach the database. Resend stays the default free path.
 - Reply sync by polling, stop on reply, and bounce suppression.
 - A unibox: a threaded inbox of replies to your campaign mail across connected mailboxes, with live updates through Supabase Realtime, reply, compose, archive and read state.
+- Open and click tracking per campaign, with bot and privacy-proxy filtering, a stats card on the campaign page and an activity timeline on each contact.
 Not included yet: warmup, open and click tracking, SMTP/IMAP mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
@@ -113,6 +114,15 @@ To run a tick locally:
 ```
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/sync
 ```
+## Open and click tracking
+
+- **Toggles.** Each campaign has Track opens and Track clicks, on by default for new campaigns. Existing campaigns keep their previous behavior (off).
+- **Tokens.** A pixel URL is `/api/t/o/<message id>.<mac>` and a link is `/api/t/c/<message id>.<base64url url>.<mac>`. The MAC is HMAC-SHA256 under a key derived from `UNSUBSCRIBE_SECRET` and the label `demail:tracking:v1`, so no new variable is needed. The click route only redirects to the http(s) URL inside a verified token. The unsubscribe link is never rewritten.
+- **Filtering.** A hit is stored either way but counted only when it passes these rules, in order: own read, prefetch (HEAD or a `Purpose` header), known crawler or scanner user agent (or none), an Apple 17.0.0.0/8 address, a click within 10 seconds of sending or an open within 3 seconds. Gmail's image proxy fetches when the mail is read, so it counts as an open.
+- **Own reads.** Signed-in members get an httpOnly `demail_reader` cookie, so opening sent mail in webmail in the same browser is not counted. Browsers that block third-party cookies send nothing, so those reads can still count.
+- **Caveats.** Apple Mail Privacy Protection and image blocking hide real opens, so open rates are an estimate. Click tracking rewrites links, which can affect deliverability, and nothing here guarantees inbox placement.
+- **Data.** Events keep the message, contact, campaign, a user agent cut to 200 characters and the URL. No IP address is stored. Each message stores at most 200 events, and `purge_old_events()` deletes events older than 180 days.
+
 ## Design decisions
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.

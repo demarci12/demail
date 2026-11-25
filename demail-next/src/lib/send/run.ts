@@ -3,6 +3,9 @@ import { serverEnv, publicEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/database.types";
 import { contactData, escapeHtml, renderTemplate } from "@/lib/merge";
+import { randomUUID } from "node:crypto";
+import { linkifyPlain, pixelTag, rewriteLinks } from "@/lib/tracking/rewrite";
+import { clickUrl, openUrl } from "@/lib/tracking/token";
 import { oneClickUnsubscribeUrl, unsubscribeUrl } from "@/lib/unsubscribe";
 import { MailAuthError } from "@/lib/mail/credentials";
 import { sendThrough } from "@/lib/mail/send";
@@ -27,8 +30,8 @@ function senderAddress(m: Mailbox) {
   const name = m.from_name.replace(/["<>\r\n]/g, "").trim();
   return name ? `${name} <${m.email}>` : m.email;
 }
-function htmlFromPlain(text: string) {
-  return `<div style="white-space:pre-wrap">${escapeHtml(text)}</div>`;
+function htmlFromPlain(text: string, wrap: ((url: string) => string) | null) {
+  return linkifyPlain(text, wrap);
 }
 // One scheduler tick: claims a bounded batch of due enrollments and advances each by one step.
 export async function runSendTick(now = new Date()): Promise<TickResult> {
@@ -305,8 +308,12 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     const sigPlain = chosen.signature_plain ? `\n\n${chosen.signature_plain}` : "";
     const outText = `${text.text}${sigPlain}\n\n--\nTo stop receiving these emails: ${link}`;
     const footer = `<p style="font-size:12px;color:#64748b"><a href="${escapeHtml(link)}">Unsubscribe</a></p>`;
-    const body = html?.ok ? html.text : htmlFromPlain(text.text + sigPlain);
-    const outHtml = `${body}${chosen.signature_html && html?.ok ? chosen.signature_html : ""}${footer}`;
+    const messageId = randomUUID();
+    const wrap = campaign.track_clicks ? (url: string) => clickUrl(messageId, url) : null;
+    const rendered = html?.ok ? (wrap ? rewriteLinks(html.text, wrap) : html.text) : htmlFromPlain(text.text + sigPlain, wrap);
+    const signature = chosen.signature_html && html?.ok ? (wrap ? rewriteLinks(chosen.signature_html, wrap) : chosen.signature_html) : "";
+    const pixel = campaign.track_opens ? pixelTag(openUrl(messageId)) : "";
+    const outHtml = `${rendered}${signature}${footer}${pixel}`;
     // A reply may have stopped the enrollment while it was leased.
     const { data: current } = await admin.from("campaign_contacts").select("status").eq("id", e.id).eq("organization_id", e.organization_id).maybeSingle();
     if (!current || current.status !== "active") {
@@ -349,6 +356,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     mailboxLast.set(chosen.id, Date.now());
     campaignSent.set(campaign.id, (campaignSent.get(campaign.id) ?? 0) + 1);
     const { error: insertError } = await admin.from("messages").insert({
+      id: messageId,
       organization_id: e.organization_id,
       campaign_id: e.campaign_id,
       contact_id: e.contact_id,

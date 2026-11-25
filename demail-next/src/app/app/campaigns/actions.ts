@@ -14,6 +14,8 @@ const settingsSchema = z
     send_days: z.number().int().min(0).max(127),
     send_start: z.string().regex(/^\d{2}:\d{2}$/),
     send_end: z.string().regex(/^\d{2}:\d{2}$/),
+    track_opens: z.boolean(),
+    track_clicks: z.boolean(),
   })
   .refine((v) => v.send_end > v.send_start, "end")
   .refine((v) => {
@@ -32,6 +34,8 @@ function settings(formData: FormData) {
     send_days,
     send_start: formData.get("send_start"),
     send_end: formData.get("send_end"),
+    track_opens: formData.get("track_opens") === "on",
+    track_clicks: formData.get("track_clicks") === "on",
   });
 }
 export async function createCampaign(formData: FormData) {

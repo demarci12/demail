@@ -64,14 +64,18 @@ export default async function CampaignPage({
   const { supabase, org } = await getOrgContext();
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!campaign) notFound();
-  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }] = await Promise.all([
+  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }] = await Promise.all([
     supabase.from("campaign_steps").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("position"),
     supabase.from("mailboxes").select("id, email, from_name, status").eq("organization_id", org.id).order("email"),
     supabase.from("campaign_mailboxes").select("mailbox_id").eq("campaign_id", id).eq("organization_id", org.id),
     supabase.from("labels").select("id, name").eq("organization_id", org.id).order("name"),
     supabase.from("campaign_contacts").select("status").eq("campaign_id", id).eq("organization_id", org.id).limit(10000),
     supabase.from("contacts").select("*").eq("organization_id", org.id).order("created_at").limit(1).maybeSingle(),
+    supabase.rpc("campaign_engagement", { p_campaign: id }),
   ]);
+  const stats = engagement?.[0];
+  const sentCount = Number(stats?.sent ?? 0);
+  const pct = (n: number) => (sentCount > 0 ? `${Math.round((n / sentCount) * 100)}%` : "0%");
   const chosen = new Set((selected ?? []).map((s) => s.mailbox_id));
   const counts: Record<string, number> = {};
   for (const e of enrollments ?? []) counts[e.status] = (counts[e.status] ?? 0) + 1;
@@ -103,6 +107,32 @@ export default async function CampaignPage({
       />
       {sp.error && <Alert>{sp.error}</Alert>}
       {sp.msg && <Alert tone="info">{sp.msg}</Alert>}
+      <Card>
+        <h2 className="mb-3 font-medium">Results</h2>
+        <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+          <div>
+            <dt className="text-slate-500">Sent</dt>
+            <dd className="text-lg font-medium">{sentCount}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Opened</dt>
+            <dd className="text-lg font-medium">{campaign.track_opens || Number(stats?.opened ?? 0) > 0 ? pct(Number(stats?.opened ?? 0)) : "Off"}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Clicked</dt>
+            <dd className="text-lg font-medium">{campaign.track_clicks || Number(stats?.clicked ?? 0) > 0 ? pct(Number(stats?.clicked ?? 0)) : "Off"}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Replied</dt>
+            <dd className="text-lg font-medium">{Number(stats?.replied ?? 0)}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Bounced</dt>
+            <dd className="text-lg font-medium">{Number(stats?.bounced ?? 0)}</dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs text-slate-500">Opens are an estimate. Privacy proxies and image blocking hide real reads, and automated link scanners are filtered out on a best effort basis.</p>
+      </Card>
       <Card>
         <h2 className="mb-3 font-medium">Steps</h2>
         {locked && <p className="mb-3 text-sm text-slate-500">Pause the campaign to change steps.</p>}

@@ -120,6 +120,51 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     await update(e, { status: "failed", next_send_at: null, error: message.slice(0, 500) });
     result.failed++;
   }
+  // Gives the unibox our side of the conversation and lets replies match by thread id.
+  async function recordOutbound(m: Mailbox, e: Enrollment, to: string, subject: string, body: string, messageId: string, threadId: string, rfcId: string | null) {
+    const sentAt = new Date().toISOString();
+    const { data: existing } = await admin.from("threads").select("id").eq("mailbox_id", m.id).eq("organization_id", m.organization_id).eq("provider_thread_id", threadId).maybeSingle();
+    let id = existing?.id;
+    if (id) {
+      await admin.from("threads").update({ last_message_at: sentAt }).eq("id", id).eq("organization_id", m.organization_id);
+    } else {
+      const { data: created } = await admin
+        .from("threads")
+        .insert({
+          organization_id: m.organization_id,
+          mailbox_id: m.id,
+          provider_thread_id: threadId,
+          subject,
+          contact_id: e.contact_id,
+          campaign_id: e.campaign_id,
+          snippet: body.replace(/\s+/g, " ").trim().slice(0, 200),
+          last_message_at: sentAt,
+          is_unread: false,
+        })
+        .select("id")
+        .single();
+      id = created?.id;
+    }
+    if (!id) {
+      console.error("thread insert failed after send", { enrollment: e.id });
+      return;
+    }
+    const { error } = await admin.from("thread_messages").insert({
+      organization_id: m.organization_id,
+      thread_id: id,
+      direction: "out",
+      kind: "sent",
+      provider_message_id: messageId,
+      rfc_message_id: rfcId,
+      from_email: m.email,
+      from_name: m.from_name,
+      to_emails: [to],
+      subject,
+      body_text: body,
+      sent_at: sentAt,
+    });
+    if (error && error.code !== "23505") console.error("thread message insert failed after send", { enrollment: e.id, message: error.message });
+  }
   for (const e of rows) {
     const entry = await loadCampaign(e.campaign_id);
     if (!entry) {
@@ -319,6 +364,9 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       sent_at: new Date().toISOString(),
     });
     if (insertError) console.error("messages insert failed after send", { enrollment: e.id, message_id: outcome.id, message: insertError.message });
+    if (chosen.provider !== "resend" && outcome.providerThreadId) {
+      await recordOutbound(chosen, e, contact.email, thread && threadSubject ? threadSubject : subject.text, text.text, outcome.id, outcome.providerThreadId, outcome.rfcMessageId ?? null);
+    }
     await advance(e, steps, step, { attempts: 0, error: null, mailbox_id: chosen.id, last_sent_at: new Date().toISOString() });
     result.sent++;
   }

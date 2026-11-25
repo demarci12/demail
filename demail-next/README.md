@@ -31,7 +31,7 @@ Not included yet: warmup, reply sync, open and click tracking, SMTP/IMAP and OAu
 4. **Configure Auth.** In Authentication, URL configuration, set the site URL to your Vercel URL and add `<your URL>/auth/callback` to the redirect allow list. Keep email confirmation on for a public instance. Switch it off only for a private trial.
 5. **Set up Resend.** Create an account, add and verify your sending domain (DNS records SPF and DKIM), then create an API key. Mailbox addresses in Demail must belong to that verified domain.
 6. **Deploy to Vercel.** Import the repository, set the root directory to `demail-next`, and add the environment variables from the table below. Generate the two secrets with `openssl rand -hex 32`. Deploy.
-7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules a job every minute that calls `POST /api/cron/send`.
+7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules two jobs every minute: `POST /api/cron/send` and `POST /api/cron/sync`.
 8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
 
 If you skip step 7, `vercel.json` still calls the same route once a day. That is enough to try the app, not to send on a schedule.
@@ -101,6 +101,15 @@ Each tick claims due enrollments with `FOR UPDATE SKIP LOCKED` and a ten minute 
 
 Follow-ups from a Gmail or Microsoft mailbox stay on the mailbox and thread of the first message, with the subject `Re: <first subject>`. If that mailbox is at its daily limit or inside its minimum gap, the follow-up waits for the next opening and never switches mailboxes; if the mailbox is disconnected it waits until you reconnect it. The instance cap applies to Resend mailboxes only. Gmail and Microsoft sending limits are the account's own, so set the mailbox daily limit at or below 500 for personal Gmail and 2000 for Google Workspace. Just before sending, the enrollment is read again and skipped if it is no longer active. A merge field that is empty and has no fallback fails that enrollment instead of sending a blank. Resend 429 and 5xx errors are retried after five minutes up to five attempts, other 4xx errors fail the enrollment. Steps can only be edited while a campaign is not active.
 
+## Reply sync and stop on reply
+A second job, `demail-sync`, calls `/api/cron/sync` every minute through `pg_cron` and `pg_net`, which is the shortest interval Supabase free allows. Each tick leases up to `SYNC_BATCH_SIZE` Gmail and Microsoft mailboxes with `FOR UPDATE SKIP LOCKED` and a five minute lease, reads at most `SYNC_MESSAGES_PER_MAILBOX` messages from each and stops after about 45 seconds, under the 60 second Vercel Hobby limit. Mailboxes in an active campaign with active enrollments are read every minute, idle ones every 10 minutes, and a failing mailbox backs off exponentially up to 60 minutes. Gmail is read with `history.list` from a stored `historyId` and Microsoft with the inbox delta from a stored `deltaLink`. The first run only records the starting point, so old mail is never imported. The Vercel cron in `vercel.json` is a daily fallback for hosts that cannot use `pg_cron`.
+Gmail push (Pub/Sub watch) and Microsoft Graph change notifications are intentionally not used. They need extra cloud setup, renewals every 7 days and every 3 days, and a public validated webhook, which works against a free, easy install. They could be added later as an accelerator.
+Only replies to Demail mail are stored: a message must match a sent campaign message by provider thread, or by `In-Reply-To` or `References`, or belong to a thread already stored. The rest of the inbox is never written to the database. Bodies are plain text, truncated at 100 KB.
+A real reply stops the contact's active enrollments in campaigns with stop on reply and records the reason `replied`. Auto-replies (out of office, `Auto-Submitted`, bulk or auto-reply headers) are stored but do not stop a sequence. A bounce notice suppresses the address, stops its enrollments with the reason `bounced`, and is stored with the kind `bounce`. If the provider rejects the stored cursor, Gmail looks back two days once and Microsoft restarts from the last seven days.
+To run a tick locally:
+```
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/sync
+```
 ## Design decisions
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.
@@ -111,7 +120,7 @@ Follow-ups from a Gmail or Microsoft mailbox stay on the mailbox and thread of t
 
 ## Known limitations
 
-- No reply detection, so stop on reply is not active yet.
+- Reply detection polls, so a reply can take up to a minute (active campaigns) or ten minutes (idle mailboxes) to be seen.
 - Resend free allows 100 mails a day and 3000 a month, and the instance cap follows that.
 - Vercel limits function time, so each tick sends a small batch. Raise `SEND_BATCH_SIZE` only on a plan with longer limits.
 - Supabase free projects pause after inactivity, which also pauses the scheduler.

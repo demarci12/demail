@@ -28,10 +28,10 @@ async function read(admin: Admin, mailboxId: string, orgId: string) {
   return { stored: JSON.parse(open(data.ciphertext)) as Stored, version: data.version };
 }
 // Returns a valid access token, refreshing lazily with a compare-and-set on `version`.
-export async function getAccessToken(admin: Admin, mailboxId: string, orgId: string, provider: OAuthProvider): Promise<string> {
+export async function getAccessToken(admin: Admin, mailboxId: string, orgId: string, provider: OAuthProvider, force = false): Promise<string> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const { stored, version } = await read(admin, mailboxId, orgId);
-    if (stored.expires_at - Date.now() > 60_000) return stored.access_token;
+    if (!force && stored.expires_at - Date.now() > 60_000) return stored.access_token;
     let fresh: TokenSet;
     try {
       fresh = await refreshTokens(provider, stored.refresh_token);

@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/database.types";
 import { contactData, escapeHtml, renderTemplate } from "@/lib/merge";
 import { oneClickUnsubscribeUrl, unsubscribeUrl } from "@/lib/unsubscribe";
-import { sendMail } from "@/lib/email/resend";
+import { MailAuthError } from "@/lib/mail/credentials";
+import { sendThrough } from "@/lib/mail/send";
+import type { MailThread } from "@/lib/mail/types";
 import { localDayStart, nextWindowStart } from "./schedule";
 type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
 type Campaign = Row<"campaigns">;
@@ -40,7 +42,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
   result.claimed = rows.length;
   if (rows.length === 0) return result;
   const utcStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const { count: sentToday } = await admin.from("messages").select("id", { count: "exact", head: true }).eq("status", "sent").gte("sent_at", utcStart.toISOString());
+  const { count: sentToday } = await admin.from("messages").select("id", { count: "exact", head: true }).eq("status", "sent").not("resend_id", "is", null).gte("sent_at", utcStart.toISOString());
   let instanceLeft = env.INSTANCE_DAILY_SEND_CAP - (sentToday ?? 0);
   const campaigns = new Map<string, { campaign: Campaign; steps: Step[]; mailboxes: Mailbox[] } | null>();
   const mailboxSent = new Map<string, number>();
@@ -172,25 +174,57 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       await defer(e, start.toISOString());
       continue;
     }
-    if (instanceLeft <= 0) {
-      await defer(e, nextUtcMidnight(now));
-      continue;
-    }
     if (campaign.daily_limit !== null && (await campaignSentToday(campaign)) >= campaign.daily_limit) {
       await defer(e, plus(now, DEFER_MS));
       continue;
     }
     // Keep the enrollment on its mailbox while it is usable, otherwise pick the least used one.
+    // A follow-up from a Gmail or Microsoft mailbox stays on that mailbox and thread.
+    const { data: sentRows } = await admin
+      .from("messages")
+      .select("mailbox_id, subject, provider_thread_id, rfc_message_id")
+      .eq("organization_id", e.organization_id)
+      .eq("campaign_id", e.campaign_id)
+      .eq("contact_id", e.contact_id)
+      .eq("status", "sent")
+      .not("provider_thread_id", "is", null)
+      .order("sent_at", { ascending: true });
+    const history = sentRows ?? [];
+    const first = history[0];
+    const last = history[history.length - 1];
+    let thread: MailThread | undefined;
+    let threadSubject: string | null = null;
+    let pinnedTo: string | null = null;
+    if (first && last?.mailbox_id) {
+      pinnedTo = last.mailbox_id;
+      thread = {
+        providerThreadId: last.provider_thread_id!,
+        inReplyToRfcId: last.rfc_message_id,
+        references: history.map((h) => h.rfc_message_id).filter((id): id is string => !!id),
+      };
+      threadSubject = `Re: ${(first.subject ?? "").replace(/^(re:\s*)+/i, "")}`;
+    }
     const ordered = [...mailboxes].sort((a, b) => (a.id === e.mailbox_id ? -1 : b.id === e.mailbox_id ? 1 : 0));
     let chosen: Mailbox | null = null;
     let retryAt = now.getTime() + DEFER_MS;
     const eligible: { m: Mailbox; sent: number }[] = [];
-    for (const m of ordered) {
+    let gapBlocked = false;
+    let instanceBlocked = false;
+    for (const m of pinnedTo ? ordered.filter((x) => x.id === pinnedTo) : ordered) {
+      // The instance cap covers Resend only.
+      if (m.provider === "resend" && instanceLeft <= 0) {
+        instanceBlocked = true;
+        continue;
+      }
       const st = await mailboxState(m);
       const gapEnds = st.last + m.min_gap_seconds * 1000;
-      if (st.sent >= m.daily_limit) continue;
+      if (st.sent >= m.daily_limit) {
+        if (pinnedTo) retryAt = new Date(nextUtcMidnight(now)).getTime();
+        continue;
+      }
       if (gapEnds > now.getTime()) {
         retryAt = Math.min(retryAt, gapEnds);
+        gapBlocked = true;
         continue;
       }
       eligible.push({ m, sent: st.sent });
@@ -200,6 +234,10 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       chosen = (pinned ?? eligible.sort((a, b) => a.sent - b.sent)[0]).m;
     }
     if (!chosen) {
+      if (instanceBlocked && !gapBlocked && !pinnedTo) {
+        await defer(e, nextUtcMidnight(now));
+        continue;
+      }
       await defer(e, new Date(Math.max(retryAt, now.getTime() + 1000)).toISOString());
       continue;
     }
@@ -224,27 +262,44 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     const footer = `<p style="font-size:12px;color:#64748b"><a href="${escapeHtml(link)}">Unsubscribe</a></p>`;
     const body = html?.ok ? html.text : htmlFromPlain(text.text + sigPlain);
     const outHtml = `${body}${chosen.signature_html && html?.ok ? chosen.signature_html : ""}${footer}`;
-    const outcome = await sendMail({
+    // A reply may have stopped the enrollment while it was leased.
+    const { data: current } = await admin.from("campaign_contacts").select("status").eq("id", e.id).eq("organization_id", e.organization_id).maybeSingle();
+    if (!current || current.status !== "active") {
+      result.stopped++;
+      continue;
+    }
+    let outcome: Awaited<ReturnType<typeof sendThrough>>;
+    try {
+      outcome = await sendThrough(admin, chosen, {
       from: senderAddress(chosen),
       to: contact.email,
       replyTo: chosen.reply_to,
-      subject: subject.text,
+      subject: thread && threadSubject ? threadSubject : subject.text,
       text: outText,
       html: outHtml,
       unsubscribeUrl: link,
       oneClickUrl: oneClickUnsubscribeUrl(baseUrl, e.organization_id, contact.id),
       idempotencyKey: key,
-    });
+      thread,
+      });
+    } catch (err) {
+      if (!(err instanceof MailAuthError)) throw err;
+      // The mailbox needs reconnecting: drop it from every cached campaign and retry later without counting an attempt.
+      await admin.from("mailboxes").update({ status: "disconnected", last_error: "Reconnect this mailbox" }).eq("id", chosen.id).eq("organization_id", chosen.organization_id);
+      for (const c of campaigns.values()) if (c) c.mailboxes = c.mailboxes.filter((x) => x.id !== chosen.id);
+      await defer(e, plus(now, DEFER_MS));
+      continue;
+    }
     if (!outcome.ok) {
       if (outcome.retryable && e.attempts + 1 < MAX_ATTEMPTS) {
-        await update(e, { attempts: e.attempts + 1, next_send_at: plus(now, RETRY_MS), error: outcome.message.slice(0, 500) });
+        await update(e, { attempts: e.attempts + 1, next_send_at: plus(now, outcome.retryAfterMs ?? RETRY_MS), error: outcome.message.slice(0, 500) });
         result.deferred++;
       } else {
         await fail(e, step, chosen.id, outcome.message);
       }
       continue;
     }
-    instanceLeft--;
+    if (chosen.provider === "resend") instanceLeft--;
     mailboxSent.set(chosen.id, (mailboxSent.get(chosen.id) ?? 0) + 1);
     mailboxLast.set(chosen.id, Date.now());
     campaignSent.set(campaign.id, (campaignSent.get(campaign.id) ?? 0) + 1);
@@ -256,11 +311,14 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       mailbox_id: chosen.id,
       status: "sent",
       idempotency_key: key,
-      resend_id: outcome.id,
-      subject: subject.text,
+      resend_id: chosen.provider === "resend" ? outcome.id : null,
+      provider_message_id: chosen.provider === "resend" ? null : outcome.id,
+      provider_thread_id: outcome.providerThreadId ?? null,
+      rfc_message_id: outcome.rfcMessageId ?? null,
+      subject: thread && threadSubject ? threadSubject : subject.text,
       sent_at: new Date().toISOString(),
     });
-    if (insertError) console.error("messages insert failed after send", { enrollment: e.id, resend_id: outcome.id, message: insertError.message });
+    if (insertError) console.error("messages insert failed after send", { enrollment: e.id, message_id: outcome.id, message: insertError.message });
     await advance(e, steps, step, { attempts: 0, error: null, mailbox_id: chosen.id, last_sent_at: new Date().toISOString() });
     result.sent++;
   }

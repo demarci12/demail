@@ -2,7 +2,7 @@
 
 Demail is an open-source cold outreach tool that runs on free tiers: Next.js on Vercel, Postgres and Auth on Supabase, and Resend for delivery. This directory is a standalone rewrite of Demail for that stack. It shares nothing with the Go services in the repository root.
 
-## What phase 1 includes
+## What it includes
 
 - Supabase Auth (email and password), workspaces, roles (owner, admin, member) and invitations.
 - Contacts with labels and CSV import with column mapping.
@@ -11,7 +11,10 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Sending through Resend from a scheduler endpoint, with an instance-wide daily cap.
 - A suppression list, an unsubscribe page, RFC 8058 one-click unsubscribe and `List-Unsubscribe` headers on every mail.
 
-Not included yet: warmup, reply sync, open and click tracking, SMTP/IMAP and OAuth mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Google and Microsoft mailboxes through OAuth, with tokens sealed by the app before they reach the database. Resend stays the default free path.
+- Reply sync by polling, stop on reply, and bounce suppression.
+- A unibox: a threaded inbox of replies to your campaign mail across connected mailboxes, with live updates through Supabase Realtime, reply, compose, archive and read state.
+Not included yet: warmup, open and click tracking, SMTP/IMAP mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 
@@ -114,11 +117,27 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.
 - **Scheduling split.** Vercel Hobby cron runs at most once a day, so it cannot drive sending. Supabase `pg_cron` runs every minute and calls the app through `pg_net`. The URL and secret sit in Supabase Vault and are set by `schedule.sql`, never by a migration. `vercel.json` keeps a daily call as a fallback. Edge Functions and a queue extension are not used, because sending shares code with the app and a claimed queue table is enough.
-- **Long-lived connections.** IMAP idle and pooled SMTP connections cannot run on Vercel or Supabase Edge Functions. Phase 1 therefore sends only through Resend. Later reply sync will use provider push or an optional small external poller. This is documented, not implemented.
+- **Long-lived connections.** IMAP idle and pooled SMTP connections cannot run on Vercel or Supabase Edge Functions, so SMTP and IMAP mailboxes are not supported. Gmail and Microsoft Graph are plain HTTPS APIs and work from a serverless function.
+- **Mailbox encryption.** OAuth tokens are sealed in the app with AES-256-GCM using `MAILBOX_ENCRYPTION_KEY` and stored in `mailbox_credentials`, a table with row level security, no policies and no grants for signed-in users, so only the service role reads it. Supabase Vault was not used: it needs one RPC per read and is awkward to dump and restore for self-hosts, while here a database dump alone is useless without the key. Resend-only installs need no key.
+- **Polling over push.** Gmail watch needs a Pub/Sub topic and a renewal every 7 days, and Graph subscriptions need a public validated webhook renewed every 3 days. Both work against a free, easy install, so replies are polled. Push could be added later as an accelerator.
+- **Cron split.** Supabase `pg_cron` runs `demail-send` and `demail-sync` every minute, each bounded to stay under the 60 second Vercel Hobby limit. Vercel keeps a daily fallback call for each.
+- **Realtime.** `threads` and `thread_messages` are in the `supabase_realtime` publication. The unibox subscribes and refreshes the page at most once a second. Row level security decides what each user receives.
 - **Sender model.** One Resend key per instance. A mailbox row is a sender identity, not a credential store.
 - **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. The service role key is used only in `src/lib/supabase/admin.ts`.
 
+## Rotating the mailbox encryption key
+1. Set `MAILBOX_ENCRYPTION_KEY_PREVIOUS` to the current key.
+2. Set `MAILBOX_ENCRYPTION_KEY` to a new value from `openssl rand -base64 32` and redeploy. Mailboxes do not need reconnecting, because opening a value tries both keys.
+3. Each mailbox is rewritten under the new key the next time its token refreshes (about hourly while it is used).
+4. Remove `MAILBOX_ENCRYPTION_KEY_PREVIOUS` once every connected mailbox has synced or sent since step 2.
+If the key is lost and there is no previous key, stored tokens cannot be opened and each mailbox must be reconnected.
 ## Known limitations
+- SMTP and IMAP mailboxes are not supported. Use Gmail, Microsoft or Resend.
+- Only replies to Demail campaign mail (and mail sent from the unibox) are stored. The rest of a connected inbox is never read into the database.
+- Supabase Realtime on the free tier allows 200 concurrent connections, and each open unibox tab uses one.
+- Microsoft Graph accepts no `List-Unsubscribe` header, so Microsoft mail carries only the footer unsubscribe link.
+- Google treats Gmail scopes as restricted: an unverified app is limited to 100 users and refresh tokens expire after 7 days while the app is in Testing.
+- Losing `MAILBOX_ENCRYPTION_KEY` means every OAuth mailbox must be reconnected.
 
 - Reply detection polls, so a reply can take up to a minute (active campaigns) or ten minutes (idle mailboxes) to be seen.
 - Resend free allows 100 mails a day and 3000 a month, and the instance cap follows that.

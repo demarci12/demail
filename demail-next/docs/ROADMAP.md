@@ -10,11 +10,15 @@ Phase 1 is shipped in this directory: auth, workspaces, contacts, mailboxes, cam
 - Campaign analytics per step and per mailbox.
 
 ## Phase 3: more mailboxes and replies
-
-- SMTP/IMAP and OAuth mailboxes (Google, Microsoft). Needs a place to keep credentials sealed (Supabase Vault or an env key) and an answer to the long-lived connection limit.
-- Reply sync and a unified inbox. Uses provider push (Gmail Pub/Sub, Microsoft Graph subscriptions, Resend inbound webhooks) or an optional small external poller container, since IMAP idle cannot run on Vercel or Supabase Edge Functions.
+Shipped:
+- Google and Microsoft OAuth mailboxes with sealed tokens, threaded follow-ups and per-mailbox caps.
+- Reply sync by polling, a unibox with live updates, reply and compose, and stop on reply.
+- Bounce notices read from connected mailboxes feed the suppression list.
+Still open:
+- SMTP/IMAP mailboxes, which need a long-lived connection that Vercel and Supabase Edge Functions cannot hold, so they would need an optional external poller.
 - Bounce and complaint webhooks from Resend feeding the suppression list.
-- Stop on reply, which depends on reply sync.
+- Provider push (Gmail Pub/Sub, Graph change notifications) as an accelerator over polling.
+Next: Phase 2 (richer campaigns) can now use reply events, then Phase 4.
 
 ## Phase 4: deliverability
 

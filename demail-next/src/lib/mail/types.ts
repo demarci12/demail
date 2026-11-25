@@ -15,6 +15,7 @@ export type OutgoingMail = {
   oneClickUrl: string;
   idempotencyKey: string;
   thread?: MailThread;
+  plain?: boolean;
 };
 
 export type SendOutcome =

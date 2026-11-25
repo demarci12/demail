@@ -11,7 +11,7 @@ const TIMEOUT_MS = 20_000;
 
 export async function sendGmail(admin: SupabaseClient<Database>, mailbox: Mailbox, mail: OutgoingMail): Promise<SendOutcome> {
   const domain = mailbox.email.split("@")[1] ?? "localhost";
-  const { raw, messageId } = buildMime(mail, domain);
+  const { raw, messageId } = buildMime(mail, domain, !mail.plain);
   const body = JSON.stringify({ raw: Buffer.from(raw).toString("base64url"), ...(mail.thread ? { threadId: mail.thread.providerThreadId } : {}) });
   const call = (token: string, url: string, init?: RequestInit) =>
     fetch(url, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });

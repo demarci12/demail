@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/input";
 
 const nav = [
   { href: "/app/contacts", label: "Contacts" },
+  { href: "/app/unibox", label: "Unibox" },
   { href: "/app/campaigns", label: "Campaigns" },
   { href: "/app/mailboxes", label: "Mailboxes" },
   { href: "/app/suppression", label: "Suppression" },
@@ -14,8 +15,14 @@ const nav = [
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const { org, orgs, user } = await getOrgContext();
+  const { supabase, org, orgs, user } = await getOrgContext();
 
+  const { count: unread } = await supabase
+    .from("threads")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", org.id)
+    .eq("status", "open")
+    .eq("is_unread", true);
   async function switchOrg(formData: FormData) {
     "use server";
     // The cookie is only a hint; getOrgContext re-checks membership on every request.
@@ -45,6 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {nav.map((n) => (
             <Link key={n.href} href={n.href} className="rounded-md px-2 py-1.5 hover:bg-slate-200">
               {n.label}
+              {n.href === "/app/unibox" && !!unread && <span className="ml-2 rounded-full bg-sky-600 px-1.5 py-0.5 text-xs text-white">{unread}</span>}
             </Link>
           ))}
         </nav>

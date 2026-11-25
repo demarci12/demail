@@ -54,3 +54,12 @@ export function oauthProviders(): { google: boolean; microsoft: boolean } {
     microsoft: key && !!e.MICROSOFT_CLIENT_ID && !!e.MICROSOFT_CLIENT_SECRET,
   };
 }
+
+const webhookSchema = z.object({
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+});
+
+// The Resend webhook signing secret; the route answers 503 while it is unset.
+export function webhookEnv() {
+  return webhookSchema.parse({ RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET || undefined });
+}

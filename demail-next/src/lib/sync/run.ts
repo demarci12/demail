@@ -80,6 +80,16 @@ async function ingest(admin: Admin, mailbox: Mailbox, m: Inbound) {
     if (kind === "reply") {
       await admin.rpc("stop_enrollments_on_reply", { p_org: org, p_contact: match.contactId, p_campaign: match.campaignId ?? undefined });
     } else if (kind === "bounce") {
+      const { error: eventError } = await admin.from("delivery_events").insert({
+        organization_id: org,
+        mailbox_id: mailbox.id,
+        contact_id: match.contactId,
+        campaign_id: match.campaignId,
+        type: "bounce",
+        source: "sync",
+        detail: "Delivery failure",
+      });
+      if (eventError && eventError.code !== "23505") throw new SyncError("Could not record bounce event");
       const { data: contact } = await admin.from("contacts").select("email").eq("id", match.contactId).eq("organization_id", org).maybeSingle();
       if (contact) {
         const { error } = await admin

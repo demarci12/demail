@@ -51,6 +51,12 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
   const mailboxSent = new Map<string, number>();
   const mailboxLast = new Map<string, number>();
   const campaignSent = new Map<string, number>();
+  // A mailbox with no row counts as healthy.
+  const bands = new Map<string, string>();
+  {
+    const { data: health } = await admin.from("mailbox_health").select("mailbox_id, band");
+    for (const h of health ?? []) bands.set(h.mailbox_id, h.band);
+  }
   async function loadCampaign(id: string) {
     if (campaigns.has(id)) return campaigns.get(id)!;
     const { data: campaign } = await admin.from("campaigns").select("*").eq("id", id).maybeSingle();
@@ -258,15 +264,24 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     const eligible: { m: Mailbox; sent: number }[] = [];
     let gapBlocked = false;
     let instanceBlocked = false;
+    let healthBlocked = false;
     for (const m of pinnedTo ? ordered.filter((x) => x.id === pinnedTo) : ordered) {
       // The instance cap covers Resend only.
       if (m.provider === "resend" && instanceLeft <= 0) {
         instanceBlocked = true;
         continue;
       }
+      const band = bands.get(m.id) ?? "healthy";
+      if (band === "paused") {
+        retryAt = Math.min(retryAt, now.getTime() + DEFER_MS);
+        healthBlocked = true;
+        continue;
+      }
+      const throttled = band === "throttled";
+      const limit = throttled ? Math.max(1, Math.floor(m.daily_limit / 2)) : m.daily_limit;
       const st = await mailboxState(m);
-      const gapEnds = st.last + m.min_gap_seconds * 1000;
-      if (st.sent >= m.daily_limit) {
+      const gapEnds = st.last + m.min_gap_seconds * (throttled ? 2 : 1) * 1000;
+      if (st.sent >= limit) {
         if (pinnedTo) retryAt = new Date(nextUtcMidnight(now)).getTime();
         continue;
       }
@@ -282,7 +297,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       chosen = (pinned ?? eligible.sort((a, b) => a.sent - b.sent)[0]).m;
     }
     if (!chosen) {
-      if (instanceBlocked && !gapBlocked && !pinnedTo) {
+      if (instanceBlocked && !gapBlocked && !healthBlocked && !pinnedTo) {
         await defer(e, nextUtcMidnight(now));
         continue;
       }

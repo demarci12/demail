@@ -703,6 +703,168 @@ export type Database = {
         };
         Relationships: [];
       };
+      delivery_events: {
+        Row: {
+          id: string;
+          organization_id: string;
+          mailbox_id: string | null;
+          message_id: string | null;
+          contact_id: string | null;
+          campaign_id: string | null;
+          type: 'bounce' | 'complaint';
+          source: 'sync' | 'resend';
+          detail: string | null;
+          occurred_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          mailbox_id?: string | null;
+          message_id?: string | null;
+          contact_id?: string | null;
+          campaign_id?: string | null;
+          type: 'bounce' | 'complaint';
+          source: 'sync' | 'resend';
+          detail?: string | null;
+          occurred_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          mailbox_id?: string | null;
+          message_id?: string | null;
+          contact_id?: string | null;
+          campaign_id?: string | null;
+          type?: 'bounce' | 'complaint';
+          source?: 'sync' | 'resend';
+          detail?: string | null;
+          occurred_at?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      mailbox_health: {
+        Row: {
+          mailbox_id: string;
+          organization_id: string;
+          band: 'healthy' | 'watch' | 'throttled' | 'paused';
+          sent_7d: number;
+          bounces_7d: number;
+          complaints_7d: number;
+          bounce_rate: number;
+          complaint_rate: number;
+          spam_rate: number | null;
+          reason: string | null;
+          band_changed_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          mailbox_id: string;
+          organization_id: string;
+          band?: 'healthy' | 'watch' | 'throttled' | 'paused';
+          sent_7d?: number;
+          bounces_7d?: number;
+          complaints_7d?: number;
+          bounce_rate?: number;
+          complaint_rate?: number;
+          spam_rate?: number | null;
+          reason?: string | null;
+          band_changed_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          mailbox_id?: string;
+          organization_id?: string;
+          band?: 'healthy' | 'watch' | 'throttled' | 'paused';
+          sent_7d?: number;
+          bounces_7d?: number;
+          complaints_7d?: number;
+          bounce_rate?: number;
+          complaint_rate?: number;
+          spam_rate?: number | null;
+          reason?: string | null;
+          band_changed_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      mailbox_health_events: {
+        Row: {
+          id: string;
+          organization_id: string;
+          mailbox_id: string;
+          from_band: 'healthy' | 'watch' | 'throttled' | 'paused';
+          to_band: 'healthy' | 'watch' | 'throttled' | 'paused';
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          mailbox_id: string;
+          from_band: 'healthy' | 'watch' | 'throttled' | 'paused';
+          to_band: 'healthy' | 'watch' | 'throttled' | 'paused';
+          reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          mailbox_id?: string;
+          from_band?: 'healthy' | 'watch' | 'throttled' | 'paused';
+          to_band?: 'healthy' | 'watch' | 'throttled' | 'paused';
+          reason?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      sending_domains: {
+        Row: {
+          id: string;
+          organization_id: string;
+          domain: string;
+          provider_hint: 'google' | 'microsoft' | 'resend' | 'other';
+          dkim_selector: string | null;
+          spf_status: 'pass' | 'missing' | 'fail' | 'unknown';
+          dkim_status: 'pass' | 'missing' | 'fail' | 'unknown';
+          dmarc_status: 'pass' | 'missing' | 'fail' | 'unknown';
+          spf_record: string | null;
+          dmarc_record: string | null;
+          last_checked_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          domain: string;
+          provider_hint?: 'google' | 'microsoft' | 'resend' | 'other';
+          dkim_selector?: string | null;
+          spf_status?: 'pass' | 'missing' | 'fail' | 'unknown';
+          dkim_status?: 'pass' | 'missing' | 'fail' | 'unknown';
+          dmarc_status?: 'pass' | 'missing' | 'fail' | 'unknown';
+          spf_record?: string | null;
+          dmarc_record?: string | null;
+          last_checked_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          domain?: string;
+          provider_hint?: 'google' | 'microsoft' | 'resend' | 'other';
+          dkim_selector?: string | null;
+          spf_status?: 'pass' | 'missing' | 'fail' | 'unknown';
+          dkim_status?: 'pass' | 'missing' | 'fail' | 'unknown';
+          dmarc_status?: 'pass' | 'missing' | 'fail' | 'unknown';
+          spf_record?: string | null;
+          dmarc_record?: string | null;
+          last_checked_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -725,6 +887,7 @@ export type Database = {
         Args: { p_campaign: string };
         Returns: { sent: number; opened: number; clicked: number; replied: number; bounced: number }[];
       };
+      refresh_mailbox_health: { Args: Record<string, never>; Returns: number };
       purge_old_events: { Args: Record<string, never>; Returns: number };
       count_sent_today: { Args: { p_mailbox: string }; Returns: number };
       create_invitation: {

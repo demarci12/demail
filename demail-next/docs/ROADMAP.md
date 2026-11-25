@@ -16,7 +16,6 @@ Shipped:
 - Bounce notices read from connected mailboxes feed the suppression list.
 Still open:
 - SMTP/IMAP mailboxes, which need a long-lived connection that Vercel and Supabase Edge Functions cannot hold, so they would need an optional external poller.
-- Bounce and complaint webhooks from Resend feeding the suppression list.
 - Provider push (Gmail Pub/Sub, Graph change notifications) as an accelerator over polling.
 Next: Phase 2 (richer campaigns) can now use reply events, then Phase 4.
 

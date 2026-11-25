@@ -48,3 +48,21 @@ select cron.schedule(
   );
   $job$
 );
+select cron.unschedule('demail-health') where exists (select 1 from cron.job where jobname = 'demail-health');
+select cron.schedule('demail-health', '*/5 * * * *', $job$ select public.refresh_mailbox_health(); $job$);
+select cron.unschedule('demail-domains') where exists (select 1 from cron.job where jobname = 'demail-domains');
+select cron.schedule(
+  'demail-domains',
+  '7 * * * *',
+  $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'demail_app_url') || '/api/cron/domains',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'demail_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $job$
+);

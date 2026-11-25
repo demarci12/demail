@@ -35,7 +35,7 @@ Not included yet: warmup, open and click tracking, SMTP/IMAP mailboxes, AI, enri
 4. **Configure Auth.** In Authentication, URL configuration, set the site URL to your Vercel URL and add `<your URL>/auth/callback` to the redirect allow list. Keep email confirmation on for a public instance. Switch it off only for a private trial.
 5. **Set up Resend.** Create an account, add and verify your sending domain (DNS records SPF and DKIM), then create an API key. Mailbox addresses in Demail must belong to that verified domain.
 6. **Deploy to Vercel.** Import the repository, set the root directory to `demail-next`, and add the environment variables from the table below. Generate the two secrets with `openssl rand -hex 32`. Deploy.
-7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules two jobs every minute: `POST /api/cron/send` and `POST /api/cron/sync`.
+7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules two jobs every minute: `POST /api/cron/send` and `POST /api/cron/sync`. It also schedules `demail-health` (SQL, every 5 minutes) and `demail-domains` (`POST /api/cron/domains`, hourly).
 8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
 
 If you skip step 7, `vercel.json` still calls the same route once a day. That is enough to try the app, not to send on a schedule.
@@ -62,6 +62,7 @@ Also listed with comments in `.env.example`.
 | `MICROSOFT_CLIENT_ID` | no | Microsoft Entra application (client) id. With the secret and the encryption key it enables Connect Microsoft |
 | `MICROSOFT_CLIENT_SECRET` | no | Microsoft Entra client secret value |
 | `MICROSOFT_TENANT` | no | Entra tenant id, or `common` (default), `organizations` or `consumers` |
+| `RESEND_WEBHOOK_SECRET` | no | Resend webhook signing secret (`whsec_...`). Without it `/api/webhooks/resend` answers 503 |
 | `SYNC_BATCH_SIZE` | no | Mailboxes read per sync tick, default 5, max 50 |
 | `SYNC_MESSAGES_PER_MAILBOX` | no | Messages read per mailbox per tick, default 50, max 200 |
 
@@ -123,6 +124,20 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Caveats.** Apple Mail Privacy Protection and image blocking hide real opens, so open rates are an estimate. Click tracking rewrites links, which can affect deliverability, and nothing here guarantees inbox placement.
 - **Data.** Events keep the message, contact, campaign, a user agent cut to 200 characters and the URL. No IP address is stored. Each message stores at most 200 events, and `purge_old_events()` deletes events older than 180 days.
 
+## Deliverability
+Bands and checks are guidance based on your own sending. Nothing here guarantees inbox placement or improves a sender reputation.
+- **Window and rates.** Each mailbox is scored over the last 7 days. Bounce and complaint rates divide by the larger of messages sent and 20, so a new mailbox with a few bounces still trips. `refresh_mailbox_health()` runs every 5 minutes from `schedule.sql`.
+| Band | Bounce rate | Complaint rate | Effect on cold sending |
+|---|---|---|---|
+| Healthy | below 2% | below 0.1% | none |
+| Watch | 2% or more, or SPF or DMARC missing or failing on the mailbox domain | 0.1% or more | none, flagged on the dashboard |
+| Throttled | 5% or more | 0.3% or more | daily limit halved (at least 1), minimum gap doubled |
+| Paused | 8% or more | 0.5% or more | no cold sends, retried every 15 minutes |
+- **Stepping.** A worse band applies at once. A better one is reached one band at a time, and only after 24 hours in the current band. Follow-ups stay pinned to their mailbox and wait while it is paused.
+- **Events.** Bounce notices read from Google and Microsoft mailboxes and Resend webhooks both write `delivery_events`, and the address is suppressed. Gmail and Microsoft do not report spam complaints, so complaints are only observable for Resend senders.
+- **Resend webhook.** In the Resend dashboard add a webhook at `<NEXT_PUBLIC_APP_URL>/api/webhooks/resend` for `email.bounced` and `email.complained`, then set `RESEND_WEBHOOK_SECRET` to its signing secret. The Svix signature is verified and timestamps older than 5 minutes are rejected.
+- **Domain checks.** `/app/deliverability` lists the domains of your mailboxes and any you add. `/api/cron/domains` rechecks each one every 24 hours, and Check now runs it at most once a minute per domain. SPF passes with a single record that ends in `~all` or `-all` and includes the provider (Google, Microsoft). DMARC needs a `v=DMARC1` record with a policy. The page shows the records to publish, merging the provider include into an existing SPF record.
+- **DKIM caveat.** The DKIM selector is chosen by the provider and cannot be discovered from DNS. The check tries `google`, `selector1`, `selector2`, `resend` and the selector you set, and reports unknown when none answers.
 ## Design decisions
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.

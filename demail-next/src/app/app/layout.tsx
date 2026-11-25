@@ -10,6 +10,7 @@ const nav = [
   { href: "/app/unibox", label: "Unibox" },
   { href: "/app/campaigns", label: "Campaigns" },
   { href: "/app/mailboxes", label: "Mailboxes" },
+  { href: "/app/deliverability", label: "Deliverability" },
   { href: "/app/suppression", label: "Suppression" },
   { href: "/app/settings/members", label: "Members" },
 ];

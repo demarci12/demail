@@ -118,7 +118,11 @@ export async function runSyncTick(opts: { organizationId?: string } = {}): Promi
       const sync = mailbox.provider === "google" ? syncGmail : syncGraph;
       const out = await sync(admin, mailbox, state.cursor, env.SYNC_MESSAGES_PER_MAILBOX);
       for (const m of out.messages) {
-        const kind = await ingest(admin, mailbox, m);
+        // One bad message must not stall the mailbox, so it is skipped and logged.
+        const kind = await ingest(admin, mailbox, m).catch(() => {
+          console.error("message ingest failed", { mailbox: mailbox.id });
+          return null;
+        });
         if (!kind) continue;
         result.stored++;
         if (kind === "reply") result.replies++;

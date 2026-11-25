@@ -23,7 +23,7 @@ export async function replyToThread(threadId: string, formData: FormData) {
   if (!mailbox) return fail(path, "The mailbox for this thread no longer exists.");
   const { data: msgs } = await supabase.from("thread_messages").select("*").eq("thread_id", thread.id).eq("organization_id", org.id).order("sent_at", { ascending: true });
   const all = msgs ?? [];
-  const lastIn = [...all].reverse().find((m) => m.direction === "in");
+  const lastIn = [...all].reverse().find((m) => m.direction === "in" && m.kind === "reply");
   const recipient = lastIn?.from_email ?? all.find((m) => m.direction === "out")?.to_emails[0];
   if (!recipient) return fail(path, "There is no one to reply to in this thread.");
   const base = (thread.subject ?? "").replace(/^(re:\s*)+/i, "");

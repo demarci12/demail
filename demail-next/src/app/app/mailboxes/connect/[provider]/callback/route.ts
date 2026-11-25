@@ -51,9 +51,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       mailboxId = data.id;
     }
     await saveCredentials(admin, { id: mailboxId, organization_id: pending.org }, { ...tokens, refresh_token: tokens.refresh_token });
+    // An existing cursor is kept so replies that arrived while disconnected are still read.
+    const { data: prior } = await admin.from("mailbox_sync_state").select("cursor").eq("mailbox_id", mailboxId).eq("organization_id", pending.org).maybeSingle();
     const { error: syncError } = await admin
       .from("mailbox_sync_state")
-      .upsert({ mailbox_id: mailboxId, organization_id: pending.org, cursor: null, next_sync_at: new Date().toISOString(), consecutive_errors: 0 });
+      .upsert({ mailbox_id: mailboxId, organization_id: pending.org, cursor: prior?.cursor ?? null, next_sync_at: new Date().toISOString(), consecutive_errors: 0 });
     if (syncError) throw new Error("sync state failed");
     return done("message=" + encodeURIComponent(`Connected ${profile.email}.`));
   } catch {

@@ -17,7 +17,7 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Open and click tracking per campaign, with bot and privacy-proxy filtering, a stats card on the campaign page and an activity timeline on each contact.
 - Deliverability: health bands, bounce and complaint events, SPF, DKIM and DMARC checks.
 - Warmup between your own Google and Microsoft mailboxes: a daily ramp, workday scheduling, human-delay replies, placement checks and an optional filter tag.
-Not included yet: SMTP/IMAP mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
+Not included yet: SMTP/IMAP mailboxes, AI, enrichment, CRM sync. This release builds roadmap Phase 4 part 1 (tracking, deliverability, warmup); Phase 2 (richer campaigns) is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 

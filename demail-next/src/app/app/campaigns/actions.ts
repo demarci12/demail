@@ -168,6 +168,66 @@ export async function moveStep(id: string, stepId: string, direction: "up" | "do
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", "Step moved.");
 }
+const variantSchema = z.object({
+  subject: z.string().trim().min(1).max(500),
+  body_plain: z.string().max(20000).refine((v) => v.trim().length > 0),
+});
+const LABELS = "BCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+function variantFields(formData: FormData) {
+  const p = variantSchema.safeParse({ subject: formData.get("subject") ?? undefined, body_plain: formData.get("body_plain") ?? undefined });
+  return p.success ? p.data : null;
+}
+// Loads a variant only when its step belongs to this campaign and organization.
+async function campaignVariant(supabase: Awaited<ReturnType<typeof getOrgContext>>["supabase"], orgId: string, id: string, variantId: string) {
+  if (!uuid.safeParse(variantId).success) return null;
+  const { data: variant } = await supabase.from("campaign_step_variants").select("id, step_id").eq("id", variantId).eq("organization_id", orgId).maybeSingle();
+  if (!variant) return null;
+  const { data: step } = await supabase.from("campaign_steps").select("id").eq("id", variant.step_id).eq("campaign_id", id).eq("organization_id", orgId).maybeSingle();
+  return step ? variant : null;
+}
+export async function addVariant(id: string, stepId: string, formData: FormData) {
+  const { supabase, org } = await stepsEditable(id);
+  const fields = variantFields(formData);
+  if (!fields || !uuid.safeParse(stepId).success) back(id, "error", "A variant needs a subject and a body.");
+  const { data: step } = await supabase.from("campaign_steps").select("id, type").eq("id", stepId).eq("campaign_id", id).eq("organization_id", org.id).maybeSingle();
+  if (!step || step.type !== "email") back(id, "error", "Variants belong to email steps.");
+  const { data: existing } = await supabase.from("campaign_step_variants").select("label").eq("step_id", stepId).eq("organization_id", org.id);
+  const used = new Set((existing ?? []).map((v) => v.label));
+  const label = LABELS.find((l) => !used.has(l));
+  if (!label) back(id, "error", "A step can have at most 25 variants.");
+  const { error } = await supabase.from("campaign_step_variants").insert({ ...fields!, step_id: stepId, organization_id: org.id, label: label! });
+  if (error) back(id, "error", "Could not add the variant.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", `Variant ${label} added.`);
+}
+export async function updateVariant(id: string, variantId: string, formData: FormData) {
+  const { supabase, org } = await stepsEditable(id);
+  const fields = variantFields(formData);
+  if (!fields) back(id, "error", "A variant needs a subject and a body.");
+  const variant = await campaignVariant(supabase, org.id, id, variantId);
+  if (!variant) back(id, "error", "Variant not found.");
+  const { error } = await supabase.from("campaign_step_variants").update(fields!).eq("id", variantId).eq("organization_id", org.id);
+  if (error) back(id, "error", "Could not save the variant.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "Variant saved.");
+}
+export async function deleteVariant(id: string, variantId: string) {
+  const { supabase, org } = await stepsEditable(id);
+  const variant = await campaignVariant(supabase, org.id, id, variantId);
+  if (!variant) back(id, "error", "Variant not found.");
+  const { count } = await supabase.from("messages").select("id", { count: "exact", head: true }).eq("variant_id", variantId).eq("organization_id", org.id);
+  // A variant that already sent is archived so its results keep their label.
+  if (count) {
+    const { error } = await supabase.from("campaign_step_variants").update({ active: false }).eq("id", variantId).eq("organization_id", org.id);
+    if (error) back(id, "error", "Could not archive the variant.");
+    revalidatePath(`/app/campaigns/${id}`);
+    back(id, "msg", "Variant archived. Its results are kept.");
+  }
+  const { error } = await supabase.from("campaign_step_variants").delete().eq("id", variantId).eq("organization_id", org.id);
+  if (error) back(id, "error", "Could not delete the variant.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "Variant deleted.");
+}
 export async function enrollContacts(id: string, formData: FormData) {
   const { supabase, org } = await editableCampaign(id);
   const label = String(formData.get("label") ?? "all");

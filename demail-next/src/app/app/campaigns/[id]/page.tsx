@@ -4,10 +4,10 @@ import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { SAMPLE_CONTACT, contactData, renderTemplate } from "@/lib/merge";
+import { SAMPLE_CONTACT, contactData, renderTemplate, type MergeData } from "@/lib/merge";
 import { CampaignFields } from "../settings-fields";
 import { MergeInsert } from "../merge-insert";
-import { addStep, deleteStep, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, updateCampaign, updateStep } from "../actions";
+import { addStep, addVariant, deleteStep, deleteVariant, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, updateCampaign, updateStep, updateVariant } from "../actions";
 function waitParts(seconds: number | null) {
   const s = seconds ?? 86400;
   if (s % 86400 === 0) return { amount: s / 86400, unit: "days" };
@@ -29,12 +29,14 @@ function WaitFields({ seconds }: { seconds: number | null }) {
     </div>
   );
 }
-function EmailFields({ subject, body, name }: { subject?: string | null; body?: string | null; name?: string | null }) {
+function EmailFields({ subject, body, name, withName = true }: { subject?: string | null; body?: string | null; name?: string | null; withName?: boolean }) {
   return (
     <>
-      <Field label="Step name (optional)">
-        <Input name="name" maxLength={200} defaultValue={name ?? ""} />
-      </Field>
+      {withName && (
+        <Field label="Step name (optional)">
+          <Input name="name" maxLength={200} defaultValue={name ?? ""} />
+        </Field>
+      )}
       <Field label="Subject">
         <Input name="subject" required maxLength={500} defaultValue={subject ?? ""} data-merge-target="" />
       </Field>
@@ -50,6 +52,23 @@ function EmailFields({ subject, body, name }: { subject?: string | null; body?: 
       </Field>
       <MergeInsert />
     </>
+  );
+}
+function Preview({ subject: subjectTemplate, body: bodyTemplate, data, to }: { subject: string; body: string; data: MergeData; to: string }) {
+  const subject = renderTemplate(subjectTemplate, data);
+  const body = renderTemplate(bodyTemplate, data);
+  return (
+    <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm">
+      <p className="mb-1 text-xs font-medium uppercase text-slate-500">Preview for {to}</p>
+      {subject.ok && body.ok ? (
+        <>
+          <p className="font-medium">{subject.text}</p>
+          <p className="whitespace-pre-wrap">{body.text}</p>
+        </>
+      ) : (
+        <p className="text-red-700">Missing merge field: {[...new Set([...(subject.ok ? [] : subject.missing), ...(body.ok ? [] : body.missing)])].join(", ")}. Add a fallback such as {"{{first_name|there}}"}.</p>
+      )}
+    </div>
   );
 }
 export default async function CampaignPage({
@@ -73,6 +92,12 @@ export default async function CampaignPage({
     supabase.from("contacts").select("*").eq("organization_id", org.id).order("created_at").limit(1).maybeSingle(),
     supabase.rpc("campaign_engagement", { p_campaign: id }),
   ]);
+  const stepIds = (steps ?? []).map((s) => s.id);
+  const { data: variantRows } = stepIds.length
+    ? await supabase.from("campaign_step_variants").select("*").eq("organization_id", org.id).in("step_id", stepIds).order("label")
+    : { data: [] };
+  const variantsByStep = new Map<string, NonNullable<typeof variantRows>>();
+  for (const v of variantRows ?? []) variantsByStep.set(v.step_id, [...(variantsByStep.get(v.step_id) ?? []), v]);
   const stats = engagement?.[0];
   const sentCount = Number(stats?.sent ?? 0);
   const pct = (n: number) => (sentCount > 0 ? `${Math.round((n / sentCount) * 100)}%` : "0%");
@@ -138,8 +163,8 @@ export default async function CampaignPage({
         {locked && <p className="mb-3 text-sm text-slate-500">Pause the campaign to change steps.</p>}
         <div className="flex flex-col gap-4">
           {(steps ?? []).map((s, i) => {
-            const subject = s.type === "email" ? renderTemplate(s.subject ?? "", sampleData) : null;
-            const body = s.type === "email" ? renderTemplate(s.body_plain ?? "", sampleData) : null;
+            const stepVariants = s.type === "email" ? (variantsByStep.get(s.id) ?? []) : [];
+            const previewTo = sample?.email ?? "a sample contact";
             return (
               <div key={s.id} className="rounded-md border border-slate-200 p-3">
                 <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase text-slate-500">
@@ -164,24 +189,51 @@ export default async function CampaignPage({
                     </form>
                   </span>
                 </div>
+                {stepVariants.length > 0 && <p className="mb-2 text-sm font-medium">Variant A</p>}
                 <form action={updateStep.bind(null, id, s.id, s.type)} className="flex flex-col gap-3">
                   {s.type === "email" ? <EmailFields subject={s.subject} body={s.body_plain} name={s.name} /> : <WaitFields seconds={s.wait_seconds} />}
                   <Button type="submit" variant="secondary" disabled={locked}>
                     Save step
                   </Button>
                 </form>
-                {subject && body && (
-                  <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm">
-                    <p className="mb-1 text-xs font-medium uppercase text-slate-500">Preview for {sample?.email ?? "a sample contact"}</p>
-                    {subject.ok && body.ok ? (
-                      <>
-                        <p className="font-medium">{subject.text}</p>
-                        <p className="whitespace-pre-wrap">{body.text}</p>
-                      </>
-                    ) : (
-                      <p className="text-red-700">Missing merge field: {[...new Set([...(subject.ok ? [] : subject.missing), ...(body.ok ? [] : body.missing)])].join(", ")}. Add a fallback such as {"{{first_name|there}}"}.</p>
-                    )}
-                  </div>
+                {s.type === "email" && <Preview subject={s.subject ?? ""} body={s.body_plain ?? ""} data={sampleData} to={previewTo} />}
+                {stepVariants
+                  .filter((v) => v.active)
+                  .map((v) => (
+                    <div key={v.id} className="mt-4 border-t border-slate-200 pt-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-medium">Variant {v.label}</p>
+                        <form action={deleteVariant.bind(null, id, v.id)}>
+                          <Button type="submit" variant="danger" className="h-7 px-2" disabled={locked}>
+                            Delete
+                          </Button>
+                        </form>
+                      </div>
+                      <form action={updateVariant.bind(null, id, v.id)} className="flex flex-col gap-3">
+                        <EmailFields subject={v.subject} body={v.body_plain} withName={false} />
+                        <Button type="submit" variant="secondary" disabled={locked}>
+                          Save variant
+                        </Button>
+                      </form>
+                      <Preview subject={v.subject} body={v.body_plain} data={sampleData} to={previewTo} />
+                    </div>
+                  ))}
+                {stepVariants
+                  .filter((v) => !v.active)
+                  .map((v) => (
+                    <p key={v.id} className="mt-2 text-sm text-slate-500">
+                      Variant {v.label} (archived)
+                    </p>
+                  ))}
+                {s.type === "email" && (
+                  <form action={addVariant.bind(null, id, s.id)} className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-3">
+                    <h3 className="text-sm font-medium">Add variant</h3>
+                    <p className="text-xs text-slate-500">Each enrollment gets one variant of this step, split evenly. Variants are plain text.</p>
+                    <EmailFields withName={false} />
+                    <Button type="submit" variant="secondary" disabled={locked}>
+                      Add variant
+                    </Button>
+                  </form>
                 )}
               </div>
             );

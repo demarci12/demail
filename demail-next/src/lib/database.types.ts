@@ -358,6 +358,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      campaign_step_variants: {
+        Row: {
+          id: string;
+          organization_id: string;
+          step_id: string;
+          label: string;
+          subject: string;
+          body_plain: string;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          step_id: string;
+          label: string;
+          subject: string;
+          body_plain: string;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          step_id?: string;
+          label?: string;
+          subject?: string;
+          body_plain?: string;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       campaign_mailboxes: {
         Row: {
           campaign_id: string;
@@ -444,6 +480,7 @@ export type Database = {
           provider_message_id: string | null;
           provider_thread_id: string | null;
           rfc_message_id: string | null;
+          variant_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -462,6 +499,7 @@ export type Database = {
           provider_message_id?: string | null;
           provider_thread_id?: string | null;
           rfc_message_id?: string | null;
+          variant_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -480,6 +518,7 @@ export type Database = {
           provider_message_id?: string | null;
           provider_thread_id?: string | null;
           rfc_message_id?: string | null;
+          variant_id?: string | null;
           created_at?: string;
         };
         Relationships: [];

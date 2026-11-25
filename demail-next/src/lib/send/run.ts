@@ -11,11 +11,13 @@ import { MailAuthError } from "@/lib/mail/credentials";
 import { sendThrough } from "@/lib/mail/send";
 import type { MailThread } from "@/lib/mail/types";
 import { localDayStart, nextWindowStart } from "./schedule";
+import { pickVariant } from "./variants";
 type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
 type Campaign = Row<"campaigns">;
 type Step = Row<"campaign_steps">;
 type Mailbox = Row<"mailboxes">;
 type Enrollment = Row<"campaign_contacts">;
+type Variant = Row<"campaign_step_variants">;
 export type TickResult = { claimed: number; sent: number; waited: number; deferred: number; stopped: number; failed: number; completed: number };
 const MAX_ATTEMPTS = 5;
 const RETRY_MS = 5 * 60_000;
@@ -47,7 +49,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
   const utcStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const { count: sentToday } = await admin.from("messages").select("id", { count: "exact", head: true }).eq("status", "sent").not("resend_id", "is", null).gte("sent_at", utcStart.toISOString());
   let instanceLeft = env.INSTANCE_DAILY_SEND_CAP - (sentToday ?? 0);
-  const campaigns = new Map<string, { campaign: Campaign; steps: Step[]; mailboxes: Mailbox[] } | null>();
+  const campaigns = new Map<string, { campaign: Campaign; steps: Step[]; mailboxes: Mailbox[]; variants: Map<string, Variant[]> } | null>();
   const mailboxSent = new Map<string, number>();
   const mailboxLast = new Map<string, number>();
   const campaignSent = new Map<string, number>();
@@ -68,7 +70,13 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       ]);
       const ids = (links ?? []).map((l) => l.mailbox_id);
       const { data: boxes } = ids.length ? await admin.from("mailboxes").select("*").in("id", ids).eq("status", "active") : { data: [] as Mailbox[] };
-      entry = { campaign, steps: steps ?? [], mailboxes: boxes ?? [] };
+      const stepIds = (steps ?? []).map((s) => s.id);
+      const { data: variantRows } = stepIds.length
+        ? await admin.from("campaign_step_variants").select("*").in("step_id", stepIds).eq("active", true).order("label")
+        : { data: [] as Variant[] };
+      const variants = new Map<string, Variant[]>();
+      for (const v of variantRows ?? []) variants.set(v.step_id, [...(variants.get(v.step_id) ?? []), v]);
+      entry = { campaign, steps: steps ?? [], mailboxes: boxes ?? [], variants };
     }
     campaigns.set(id, entry);
     return entry;
@@ -181,7 +189,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       result.stopped++;
       continue;
     }
-    const { campaign, steps, mailboxes } = entry;
+    const { campaign, steps, mailboxes, variants } = entry;
     const { data: contact } = await admin.from("contacts").select("*").eq("id", e.contact_id).eq("organization_id", e.organization_id).maybeSingle();
     if (!contact) {
       await update(e, { status: "stopped", next_send_at: null, error: "Contact not found" });
@@ -305,9 +313,11 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       continue;
     }
     const data = contactData(contact);
-    const subject = renderTemplate(step.subject ?? "", data);
-    const text = renderTemplate(step.body_plain ?? "", data);
-    const html = step.body_html ? renderTemplate(step.body_html, data, escapeHtml) : null;
+    const variant = pickVariant(e.id, step.id, variants.get(step.id) ?? []);
+    const subject = renderTemplate(variant?.subject ?? step.subject ?? "", data);
+    const text = renderTemplate(variant?.body_plain ?? step.body_plain ?? "", data);
+    // Variants are plain text, so only variant A uses the step's HTML body.
+    const html = !variant && step.body_html ? renderTemplate(step.body_html, data, escapeHtml) : null;
     const missing = [subject, text, html].flatMap((r) => (r && !r.ok ? r.missing : []));
     if (!subject.ok || !text.ok || (html && !html.ok)) {
       await fail(e, step, chosen.id, `Missing merge field: ${[...new Set(missing)].join(", ")}`);
@@ -385,6 +395,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       rfc_message_id: outcome.rfcMessageId ?? null,
       subject: thread && threadSubject ? threadSubject : subject.text,
       sent_at: new Date().toISOString(),
+      variant_id: variant?.id ?? null,
     });
     if (insertError) console.error("messages insert failed after send", { enrollment: e.id, message_id: outcome.id, message: insertError.message });
     if (chosen.provider !== "resend" && outcome.providerThreadId) {

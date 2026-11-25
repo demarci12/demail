@@ -1,0 +1,94 @@
+# Demail (Next.js + Supabase)
+
+Demail is an open-source cold outreach tool that runs on free tiers: Next.js on Vercel, Postgres and Auth on Supabase, and Resend for delivery. This directory is a standalone rewrite of Demail for that stack. It shares nothing with the Go services in the repository root.
+
+## What phase 1 includes
+
+- Supabase Auth (email and password), workspaces, roles (owner, admin, member) and invitations.
+- Contacts with labels and CSV import with column mapping.
+- Sender identities (mailboxes) with a daily cap and a minimum gap between sends.
+- Campaigns with email and wait steps, merge fields with fallbacks, a preview against a sample contact, a send window by timezone and weekday, enrollment by label or all contacts, launch and pause.
+- Sending through Resend from a scheduler endpoint, with an instance-wide daily cap.
+- A suppression list, an unsubscribe page, RFC 8058 one-click unsubscribe and `List-Unsubscribe` headers on every mail.
+
+Not included yet: warmup, reply sync, open and click tracking, SMTP/IMAP and OAuth mailboxes, AI, enrichment, CRM sync. See [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Free-tier stack and limits
+
+| Service | Role | Free tier limit to know |
+|---|---|---|
+| Supabase | Postgres, Auth, scheduler (`pg_cron`, `pg_net`, Vault) | 500 MB database, projects pause after a week without activity |
+| Vercel (Hobby) | Hosts the Next.js app and API routes | Cron runs once a day at most, function time limit applies |
+| Resend | Sends the mail | 100 mails a day, 3000 a month, one verified domain |
+
+`INSTANCE_DAILY_SEND_CAP` defaults to 100 so a new instance stays inside the Resend free tier.
+
+## Setup
+
+1. **Get the code.** Fork or clone the repository. The app lives in `demail-next/`.
+2. **Create a Supabase project** at supabase.com. Note the project URL, the anon key and the service role key (Project settings, API).
+3. **Apply the schema.** Either install the Supabase CLI, run `supabase link --project-ref <ref>` and `supabase db push` from `demail-next/`, or paste each file in `supabase/migrations/` into the SQL editor in filename order.
+4. **Configure Auth.** In Authentication, URL configuration, set the site URL to your Vercel URL and add `<your URL>/auth/callback` to the redirect allow list. Keep email confirmation on for a public instance. Switch it off only for a private trial.
+5. **Set up Resend.** Create an account, add and verify your sending domain (DNS records SPF and DKIM), then create an API key. Mailbox addresses in Demail must belong to that verified domain.
+6. **Deploy to Vercel.** Import the repository, set the root directory to `demail-next`, and add the environment variables from the table below. Generate the two secrets with `openssl rand -hex 32`. Deploy.
+7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules a job every minute that calls `POST /api/cron/send`.
+8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
+
+If you skip step 7, `vercel.json` still calls the same route once a day. That is enough to try the app, not to send on a schedule.
+
+## Environment variables
+
+Also listed with comments in `.env.example`.
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Supabase anon key, safe in the browser because RLS guards every table |
+| `SUPABASE_SERVICE_ROLE_KEY` | yes | Service role key, server only, used by the sender and the unsubscribe route |
+| `RESEND_API_KEY` | yes | Resend API key |
+| `CRON_SECRET` | yes | Bearer secret for `/api/cron/send`, at least 16 characters |
+| `UNSUBSCRIBE_SECRET` | yes | HMAC secret for unsubscribe links, at least 32 characters. Changing it invalidates links already sent |
+| `NEXT_PUBLIC_APP_URL` | yes | Public base URL without a trailing slash, used in links inside mail |
+| `SEND_BATCH_SIZE` | no | Enrollments processed per tick, default 20 |
+| `INSTANCE_DAILY_SEND_CAP` | no | Mails per UTC day for the whole instance, default 100 |
+
+No secret is committed. Real values live only in Vercel and in your local `.env.local`.
+
+## Local development
+
+```
+cd demail-next
+pnpm install
+cp .env.example .env.local   # fill in the values
+pnpm dev
+```
+
+Use a hosted Supabase project for development, or run `supabase start` if you have Docker. Run `pnpm typecheck` and `pnpm lint` before pushing. To trigger a send tick locally:
+
+```
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/send
+```
+
+## How sending works
+
+Each tick claims due enrollments with `FOR UPDATE SKIP LOCKED` and a ten minute lease, then handles each one: it stops the enrollment if the contact is unsubscribed or suppressed, waits for the campaign send window, respects the mailbox daily limit, the minimum gap, the campaign daily limit and the instance cap, renders merge fields, and sends through Resend with `Idempotency-Key` set to `<enrollment id>:<step position>`. A merge field that is empty and has no fallback fails that enrollment instead of sending a blank. Resend 429 and 5xx errors are retried after five minutes up to five attempts, other 4xx errors fail the enrollment. Steps can only be edited while a campaign is not active.
+
+## Design decisions
+
+- **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.
+- **Scheduling split.** Vercel Hobby cron runs at most once a day, so it cannot drive sending. Supabase `pg_cron` runs every minute and calls the app through `pg_net`. The URL and secret sit in Supabase Vault and are set by `schedule.sql`, never by a migration. `vercel.json` keeps a daily call as a fallback. Edge Functions and a queue extension are not used, because sending shares code with the app and a claimed queue table is enough.
+- **Long-lived connections.** IMAP idle and pooled SMTP connections cannot run on Vercel or Supabase Edge Functions. Phase 1 therefore sends only through Resend. Later reply sync will use provider push or an optional small external poller. This is documented, not implemented.
+- **Sender model.** One Resend key per instance. A mailbox row is a sender identity, not a credential store.
+- **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. The service role key is used only in `src/lib/supabase/admin.ts`.
+
+## Known limitations
+
+- No reply detection, so stop on reply is not active yet.
+- Resend free allows 100 mails a day and 3000 a month, and the instance cap follows that.
+- Vercel limits function time, so each tick sends a small batch. Raise `SEND_BATCH_SIZE` only on a plan with longer limits.
+- Supabase free projects pause after inactivity, which also pauses the scheduler.
+- Migrations were checked against an in-memory Postgres, not a live Supabase project. The `schedule.sql` extensions run for the first time in your project.
+
+## License
+
+Apache-2.0, see the root `LICENSE`. Attribution is in the root [NOTICE](../NOTICE).

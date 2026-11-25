@@ -7,6 +7,9 @@ import { Select } from "@/components/ui/input";
 
 const nav = [
   { href: "/app/contacts", label: "Contacts" },
+  { href: "/app/campaigns", label: "Campaigns" },
+  { href: "/app/mailboxes", label: "Mailboxes" },
+  { href: "/app/suppression", label: "Suppression" },
   { href: "/app/settings/members", label: "Members" },
 ];
 

@@ -14,8 +14,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "creative-and-craft",
     subject: "Sourdough starter turned sour",
+    previousKeys: ["fb03d610ad24"],
     turns: [
-      "{{to_first}}, my starter smells like nail polish remover and has a grey liquid on top. I've been feeding it every morning with a spoonful of rye and the same of water. Is it dead or just hungry? I'm reluctant to throw away a month of effort.",
+      "My starter smells like nail polish remover and has a grey liquid on top. I've been feeding it every morning with a spoonful of rye and the same of water. Is it dead or just hungry? I'm reluctant to throw away a month of effort.",
       "It's hungry, not dead. That smell and the grey liquid, called hooch, mean it's gone too long between feeds. Pour the liquid off, throw away all but a tablespoon of the starter, and feed it with 50 grams each of flour and water. Twice a day for three days and it should recover.",
       "Twice a day for three days, I can manage that. I was only feeding it a spoonful, which was probably far too little. I'll report on the smell by Sunday and, if it works, I'll bake the first loaf next weekend.\n\n{{from_first}}",
       "Do that, and use mostly white flour for the loaf so the crumb is open. If the smell turns sweet and yeasty by Sunday, you're through the worst of it.",
@@ -34,8 +35,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "creative-and-craft",
     subject: "Yarn for the baby blanket",
+    previousKeys: ["64ad56687552"],
     turns: [
-      "Hi {{to_first}}, I'm starting a blanket for my niece and can't decide on the yarn. There's a merino blend in pale sage and a cotton one in cream. The baby is due in November. Which would you choose, thinking about washing and how it feels?",
+      "Hey {{to_first}}, I'm starting a blanket for my niece and can't decide on the yarn. There's a merino blend in pale sage and a cotton one in cream. The baby is due in November. Which would you choose, thinking about washing and how it feels?",
       "I'd choose the merino blend, provided it's labelled machine washable. It's warm for November and soft against the skin. Cotton is lovely but heavy once it's a full blanket, and it doesn't spring back. Get one extra skein, since sage dye lots can differ.",
       "The label says superwash, so it should be fine in the machine. I'll take your advice and buy the extra skein, and I'll use a simple moss stitch so the colour does the work. I'm aiming to finish by the end of October.\n\n{{from_first}}",
       "Moss stitch will look wonderful in that sage. If you want an easy edge, a single row of crochet in the same colour keeps it from curling.",
@@ -54,8 +56,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "creative-and-craft",
     subject: "Glaze came out cloudy",
+    previousKeys: ["67bacf03c3da"],
     turns: [
-      "Hello {{to_first}},\n\nI opened the kiln this morning and the celadon glaze on my bowls has gone cloudy instead of clear green. They went to cone 6 as usual. I applied it a bit thicker than before because I was nervous about thin spots. Could the thickness be the reason?",
+      "I opened the kiln this morning and the celadon glaze on my bowls has gone cloudy instead of clear green. They went to cone 6 as usual. I applied it a bit thicker than before because I was nervous about thin spots. Could the thickness be the reason?",
       "It very likely is. Celadon turns milky when it's applied thick, especially if it pools in the bottom of a bowl. Two thin coats with a good dry in between gives the clear green you want. If the bowls are food safe otherwise, you can keep these and use them for dry goods.",
       "Two thin coats, I'll do that for the next batch. I'll keep the cloudy ones for the shelf in the kitchen. They're not so bad, a bit like sea glass. I'll bring one to the studio on Thursday so you can see.\n\n{{from_first}}",
       "I'd like to see it, sea glass is a generous description. Bring the glaze recipe as well and we can adjust the flux slightly.",
@@ -74,8 +77,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "creative-and-craft",
     subject: "Fixing the drawer on the old dresser",
+    previousKeys: ["3adc460ff0a9"],
     turns: [
-      "Hi {{to_first}}, I bought a pine dresser at the flea market and the middle drawer sticks badly. The runners look worn and there's a bit of swelling on the left side. I have a plane and some sandpaper, but I've never fixed a drawer. Where would you begin?",
+      "Quick one, {{to_first}}. I bought a pine dresser at the flea market and the middle drawer sticks badly. The runners look worn and there's a bit of swelling on the left side. I have a plane and some sandpaper, but I've never fixed a drawer. Where would you begin?",
       "Start by rubbing a candle stub along the runners to see if it just needs lubrication. If it still sticks, mark the shiny spots where the wood rubs and take off a little with the plane, no more than a pencil line at a time. Sand the edge afterwards and wax it. Don't take off too much, you can't put it back.",
       "The candle trick worked better than I expected, though the left side still catches a little. I'll mark the shiny spots tonight and plane lightly tomorrow. I'm quite proud of myself, my partner thought I would ruin it.\n\n{{from_first}}",
       "You should be proud, and stop as soon as it slides freely. Send a photo of the finished dresser if you remember, I'm curious about the colour.",

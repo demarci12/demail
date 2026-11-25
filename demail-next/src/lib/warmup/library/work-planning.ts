@@ -34,8 +34,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "work-planning",
     subject: "Budget lines for next quarter's tooling",
+    previousKeys: ["86c4c9f20353"],
     turns: [
-      "{{to_first}}, a quick question on tooling spend. The design team asked for four more seats of the prototyping app, which is about 600 a quarter, and engineering wants to move error tracking to the larger tier. I can approve one of them outright but would like your view on the other. Which would you rank first?",
+      "A quick question on tooling spend, {{to_first}}. The design team asked for four more seats of the prototyping app, which is about 600 a quarter, and engineering wants to move error tracking to the larger tier. I can approve one of them outright but would like your view on the other. Which would you rank first?",
       "I'd rank error tracking first. We spent two full days last month digging through logs for a bug the larger tier would have shown in minutes. The prototyping seats are nice to have, and two of the four people only open files to comment. Perhaps give them viewer access and buy two seats instead of four.",
       "Viewer access for commenters is a good compromise, and it halves the cost. I'll approve the error tracking upgrade today and ask design to come back with two seats. I'll mention it was your suggestion.\n\n{{from_first}}",
       "That works for me. If design pushes back, send them my way and I'll go through who actually edits files each week. No rush from my side.",
@@ -44,8 +45,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "work-planning",
     subject: "Interview loop for the data analyst role",
+    previousKeys: ["f5019e898bb6"],
     turns: [
-      "Hi {{to_first}}, we have three candidates for the data analyst role and I'm sketching the loop. My plan is a thirty minute intro with you, a SQL exercise on Tuesday with Ines, and a final conversation with the head of product. Does that feel like too much for people who are probably interviewing elsewhere too?",
+      "Good afternoon {{to_first}}, we have three candidates for the data analyst role and I'm sketching the loop. My plan is a thirty minute intro with you, a SQL exercise on Tuesday with Ines, and a final conversation with the head of product. Does that feel like too much for people who are probably interviewing elsewhere too?",
       "It feels slightly heavy, honestly. I'd fold the intro into the final conversation and keep the SQL exercise as the real filter. Candidates tend to drop out after the second call and we'd lose people for no good reason. If you want, I can sit in on the exercise instead of doing a separate intro.",
       "Folding the intro in makes sense, and having you at the exercise gives candidates a friendlier face than a stopwatch. I'll rewrite the invitations tonight and send them out tomorrow morning. Thanks for talking me out of the longer version.\n\n{{from_first}}",
       "Happy to help, it's a better experience for everyone. Let me know the times once they confirm and I'll block my calendar.\n\nBest, {{from_first}}",
@@ -74,8 +76,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "work-planning",
     subject: "Capacity for the November launch",
+    previousKeys: ["f03514ef089a"],
     turns: [
-      "Hi {{to_first}}, I'm trying to work out whether the November launch is realistic with the people we have. By my count there are 38 working days left, and the remaining work is roughly 52 person days once I include review and fixes. That's before anyone takes holiday. Does your estimate come out similar?",
+      "Evening {{to_first}}, I'm trying to work out whether the November launch is realistic with the people we have. By my count there are 38 working days left, and the remaining work is roughly 52 person days once I include review and fixes. That's before anyone takes holiday. Does your estimate come out similar?",
       "Mine is a bit higher, around 58, mostly because I allow more time for the payment edge cases. With two people planning leave in October I don't think it fits without cutting something. My suggestion is to drop the saved-views feature from the launch and ship it two weeks later.",
       "Saved views are the right thing to cut, it's the least tied to the pitch we've already made to customers. I'll rework the plan around 46 person days and see if that gives us a few days of margin. I'll send you the revised chart when it's ready.\n\nThanks, {{from_first}}",
       "Good plan, the margin matters more than any single feature. Send the chart whenever it's ready and I'll sanity check the dates against the leave calendar.",

@@ -14,8 +14,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "events-and-travel",
     subject: "Hotel near the convention centre",
+    previousKeys: ["527a3bb6f5d9"],
     turns: [
-      "Hello {{to_first}},\n\nI found two hotels for the Denver trip. The Larimer is a six minute walk from the convention centre at 189 a night, and the Platte House is twenty minutes away for 134. I'm inclined to pick the closer one, but I know travel costs are being watched. What would you do?",
+      "Hey {{to_first}},\n\nI found two hotels for the Denver trip. The Larimer is a six minute walk from the convention centre at 189 a night, and the Platte House is twenty minutes away for 134. I'm inclined to pick the closer one, but I know travel costs are being watched. What would you do?",
       "I'd take the Larimer. Five nights at the difference is about 275, and a twenty minute walk at 7 in the morning in March is not much fun. Also the Larimer includes breakfast, which narrows the gap further. If finance asks, show them the breakfast line.",
       "Good point about breakfast, I hadn't added it up. I'll book the Larimer today and keep the confirmation for the expense report. I'll also ask about late checkout since my flight leaves in the evening.\n\n{{from_first}}",
       "Late checkout is always worth a try. They gave me until 2 pm last year just for asking nicely at the front desk.",
@@ -34,8 +35,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "events-and-travel",
     subject: "Layover in Frankfurt",
+    previousKeys: ["4875e75e57e8"],
     turns: [
-      "Hi {{to_first}}, my flight to Singapore has a four hour layover in Frankfurt on the 9th. I'm wondering if it's worth leaving the airport or if I'll just spend the time worrying about getting back. Have you done that connection before?",
+      "My flight to Singapore has a four hour layover in Frankfurt on the 9th. I'm wondering if it's worth leaving the airport or if I'll just spend the time worrying about getting back. Have you done that connection before?",
       "I have, twice. With four hours I'd stay in the airport. By the time you clear security again and come back, you'd be left with an hour at most. If you want something to do, the observation terrace is open until 9 and is quiet in the afternoon. The pretzels at the bakery near gate B are worth it, too.",
       "That settles it, I'll stay and find the terrace. I could do with a quiet hour anyway, the week has been a lot. I'll try a pretzel and report back.\n\n{{from_first}}",
       "Do report back. If the terrace is closed for any reason, there's a reading lounge near gate Z with decent chairs.",
@@ -44,8 +46,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "events-and-travel",
     subject: "Catering numbers for Saturday's open house",
+    previousKeys: ["a81e32275dc3"],
     turns: [
-      "{{to_first}}, the open house is on Saturday and the RSVP list stands at 54, though I expect a handful more to just turn up. The caterer wants a final number by tomorrow noon. Should I ask for 60 portions or 65? I hate waste but I'd hate running short even more.",
+      "Good morning {{to_first}}, the open house is on Saturday and the RSVP list stands at 54, though I expect a handful more to just turn up. The caterer wants a final number by tomorrow noon. Should I ask for 60 portions or 65? I hate waste but I'd hate running short even more.",
       "I'd order 60 with a few extra pastries as a buffer. At our last open day about 80 percent of the RSVP list came, and walk-ins were fewer than ten. Sandwiches can be kept for Monday's team lunch if there are leftovers. Pastries disappear anyway.",
       "60 with extra pastries it is. I'll send the final number to the caterer before noon and tell them to deliver by 11 on Saturday. I'll also ask for vegetarian labels on the platters this time.\n\n{{from_first}}",
       "Labels are a great idea, last time we had a long discussion about what was in the quiche. See you on Saturday morning to help set up.",
@@ -54,8 +57,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "events-and-travel",
     subject: "Packing list for the ferry to Orkney",
+    previousKeys: ["15864e67737a"],
     turns: [
-      "Hello {{to_first}},\n\nI've started a packing list for Orkney and it's already too long. Waterproof trousers, two jumpers, the good boots, binoculars for the seabirds. We only have one bag each on the ferry since there's no car. What would you cut?",
+      "Evening {{to_first}},\n\nI've started a packing list for Orkney and it's already too long. Waterproof trousers, two jumpers, the good boots, binoculars for the seabirds. We only have one bag each on the ferry since there's no car. What would you cut?",
       "I'd cut one jumper and rely on layers. The weather in early June changes by the hour, so a thin waterproof shell matters more than a second thick knit. The binoculars are worth the weight, the puffins at Marwick Head are close enough that you'll want them. Leave the umbrella, the wind will break it.",
       "Good advice, the umbrella is out and so is one jumper. I'll pack the light shell and a spare pair of dry socks, which I always forget. The ferry leaves at 5:40 so we'll have a long evening on deck.\n\n{{from_first}}",
       "Dry socks are the secret to a good holiday, I'm glad you thought of them. Bring a flask too, the tea on the boat costs a fortune.",
@@ -64,8 +68,9 @@ export const threads: WarmupThread[] = [
   {
     theme: "events-and-travel",
     subject: "Speaker slot at the meetup in Utrecht",
+    previousKeys: ["4f5ba93b1de6"],
     turns: [
-      "{{to_first}}, the organisers have offered me a twenty minute slot at the Utrecht meetup on the 28th, between the two main talks. I'd like to speak about how we moved our reporting to a single database, but I'm not sure twenty minutes is enough. Would you trim it or ask for thirty?",
+      "Hi again {{to_first}}, the organisers have offered me a twenty minute slot at the Utrecht meetup on the 28th, between the two main talks. I'd like to speak about how we moved our reporting to a single database, but I'm not sure twenty minutes is enough. Would you trim it or ask for thirty?",
       "I'd stay at twenty and trim, since the slot between two main talks is meant to be brisk. Pick two lessons and show one slide for each. People remember a single clear story better than a tour of the architecture. I'm happy to listen to a practice run on Tuesday if you like.",
       "Two lessons and two slides, that is much clearer than what I had. A practice run on Tuesday would be great, I'll book a room and walk you through it. I'll also ask the organisers whether there's a clicker.\n\n{{from_first}}",
       "Tuesday after lunch is fine for me. If there's no clicker I have one in my bag from my last talk, I'll bring it along.",

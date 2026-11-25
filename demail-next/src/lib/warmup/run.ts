@@ -8,7 +8,7 @@ import { MailAuthError } from "@/lib/mail/credentials";
 import { sendThrough } from "@/lib/mail/send";
 import type { MailThread, OutgoingMail } from "@/lib/mail/types";
 import { localDayStart } from "@/lib/send/schedule";
-import { library, pickThread, render } from "./library";
+import { findThread, pickThread, render } from "./library";
 import { findInRecipient, rescueFromSpam } from "./placement";
 import { MIN_GAP_MS, dailyTarget, inWorkday, intoWorkday, type Band } from "./plan";
 import { validateWarmupWording } from "./wording";
@@ -214,7 +214,7 @@ async function doReply(ctx: Ctx, job: Job, now: Date): Promise<Result> {
   const blocked = await guard(ctx, mb, now, "reply");
   if (blocked) return blocked;
   const partner = await mailboxOf(ctx, prev.sender_mailbox_id, job.organization_id);
-  const entry = library.find((t) => t.key === thread.library_key);
+  const entry = findThread(thread.library_key);
   if (!partner || !eligible(partner) || !entry || prev.turn >= entry.turns.length || !prev.rfc_message_id) {
     await closeThread(ctx, thread);
     return skip("Thread cannot continue");

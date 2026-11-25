@@ -26,9 +26,14 @@ function build(): LibraryThread[] {
     ...creativeAndCraft,
     ...everydayLife,
   ];
+  const live = new Set(all.map(keyOf));
   const out: LibraryThread[] = [];
   for (const t of all) {
     const key = keyOf(t);
+    if (t.previousKeys?.some((k) => live.has(k))) {
+      console.error(`warmup library thread has a previous key that is live: ${key}`);
+      continue;
+    }
     const bad = [t.subject, ...t.turns].some(
       (text) => !validateWarmupWording(text).ok,
     );
@@ -43,18 +48,31 @@ function build(): LibraryThread[] {
 
 export const library: LibraryThread[] = build();
 
+function keysOf(t: LibraryThread): string[] {
+  return [t.key, ...(t.previousKeys ?? [])];
+}
+
+// Resolves a stored library_key, including one a thread had before an edit.
+export function findThread(key: string): LibraryThread | null {
+  return library.find((t) => keysOf(t).includes(key)) ?? null;
+}
+
 // Prefers a thread not seen recently, else the least recently seen one.
 export function pickThread(opts: {
   seenRecently: Set<string>;
   seenEver: Map<string, number>;
 }): LibraryThread | null {
   if (library.length === 0) return null;
-  const fresh = library.filter((t) => !opts.seenRecently.has(t.key));
+  const lastSeen = (t: LibraryThread) =>
+    Math.max(0, ...keysOf(t).map((k) => opts.seenEver.get(k) ?? 0));
+  const fresh = library.filter(
+    (t) => !keysOf(t).some((k) => opts.seenRecently.has(k)),
+  );
   if (fresh.length > 0) return fresh[randomInt(fresh.length)];
   let best = library[0];
-  let bestAt = opts.seenEver.get(best.key) ?? 0;
+  let bestAt = lastSeen(best);
   for (const t of library) {
-    const at = opts.seenEver.get(t.key) ?? 0;
+    const at = lastSeen(t);
     if (at < bestAt) {
       best = t;
       bestAt = at;

@@ -10,5 +10,7 @@ export type ThemeId =
 export type WarmupThread = {
   theme: ThemeId;
   subject: string;
+  // Keys this thread had before an edit, so threads in flight continue and repeat history holds.
+  previousKeys?: string[];
   turns: [string, string, string, string];
 };

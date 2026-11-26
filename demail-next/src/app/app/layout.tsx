@@ -9,6 +9,7 @@ const nav = [
   { href: "/app/contacts", label: "Contacts" },
   { href: "/app/unibox", label: "Unibox" },
   { href: "/app/campaigns", label: "Campaigns" },
+  { href: "/app/forms", label: "Forms" },
   { href: "/app/mailboxes", label: "Mailboxes" },
   { href: "/app/deliverability", label: "Deliverability" },
   { href: "/app/suppression", label: "Suppression" },

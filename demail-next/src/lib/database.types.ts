@@ -1385,6 +1385,129 @@ export type Database = {
         };
         Relationships: [];
       };
+      forms: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          slug: string;
+          published: boolean;
+          title: string;
+          intro: string;
+          submit_label: string;
+          success_message: string;
+          consent_text: string | null;
+          fields: Json;
+          accent_color: string;
+          layout: "card" | "plain";
+          label_id: string | null;
+          campaign_id: string | null;
+          daily_limit: number;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          name: string;
+          slug?: string;
+          published?: boolean;
+          title?: string;
+          intro?: string;
+          submit_label?: string;
+          success_message?: string;
+          consent_text?: string | null;
+          fields?: Json;
+          accent_color?: string;
+          layout?: "card" | "plain";
+          label_id?: string | null;
+          campaign_id?: string | null;
+          daily_limit?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          name?: string;
+          slug?: string;
+          published?: boolean;
+          title?: string;
+          intro?: string;
+          submit_label?: string;
+          success_message?: string;
+          consent_text?: string | null;
+          fields?: Json;
+          accent_color?: string;
+          layout?: "card" | "plain";
+          label_id?: string | null;
+          campaign_id?: string | null;
+          daily_limit?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      form_submissions: {
+        Row: {
+          id: string;
+          organization_id: string;
+          form_id: string;
+          contact_id: string;
+          answers: Json;
+          consented: boolean;
+          enrolled: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          form_id: string;
+          contact_id: string;
+          answers: Json;
+          consented?: boolean;
+          enrolled?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          form_id?: string;
+          contact_id?: string;
+          answers?: Json;
+          consented?: boolean;
+          enrolled?: boolean;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      form_rate_buckets: {
+        Row: {
+          organization_id: string;
+          form_id: string;
+          bucket: string;
+          window_start: string;
+          hits: number;
+        };
+        Insert: {
+          organization_id: string;
+          form_id: string;
+          bucket: string;
+          window_start: string;
+          hits?: number;
+        };
+        Update: {
+          organization_id?: string;
+          form_id?: string;
+          bucket?: string;
+          window_start?: string;
+          hits?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1462,6 +1585,10 @@ export type Database = {
       claim_due_crm_syncs: {
         Args: { batch: number; p_org?: string };
         Returns: Database["public"]["Tables"]["crm_connections"]["Row"][];
+      };
+      submit_form: {
+        Args: { p_form: string; p_bucket: string; p_contact: Json; p_answers: Json; p_consented: boolean };
+        Returns: string;
       };
     };
     Enums: {

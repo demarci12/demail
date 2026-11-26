@@ -1615,6 +1615,7 @@ export type Database = {
         Returns: boolean;
       };
       is_org_member: { Args: { org: string }; Returns: boolean };
+      is_display_name: { Args: { p: string }; Returns: boolean };
       reserve_ai_call: {
         Args: { p_org: string; p_source: "workspace" | "instance"; p_instance_limit: number };
         Returns: boolean;

@@ -273,6 +273,7 @@ export async function runCrmTick(opts: { organizationId?: string } = {}): Promis
           if (cursorError) throw new Error("Could not advance pull cursor");
         }
       }
+      // Retry is part of the push: with push off nothing is written to HubSpot, and Settings offers no Retry.
       if (conn.push_replies) await retrySkipped(admin, conn, token, result, deadline);
       const pushed = conn.push_replies ? await push(admin, conn, token, result, deadline) : { full: false };
       const now = Date.now();

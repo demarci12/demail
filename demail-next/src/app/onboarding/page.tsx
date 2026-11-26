@@ -1,16 +1,18 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { setOrgCookie } from "@/lib/org";
+import { cleanText } from "@/lib/input";
 import { Alert, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 
 async function createOrganization(formData: FormData) {
   "use server";
-  const name = String(formData.get("name") ?? "").trim();
+  const name = cleanText(formData.get("name"), 200);
   if (name.length < 1 || name.length > 80) redirect("/onboarding?error=" + encodeURIComponent("Enter a workspace name up to 80 characters."));
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("create_organization", { org_name: name });
+  if (error?.code === "23514") redirect("/onboarding?error=" + encodeURIComponent("Workspace names cannot contain tags, links or email addresses."));
   if (error || !data) redirect("/onboarding?error=" + encodeURIComponent("Could not create the workspace."));
   await setOrgCookie(data);
   redirect("/app");

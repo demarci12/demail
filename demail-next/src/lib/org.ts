@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cleanText, displayName } from "@/lib/input";
 import { createClient } from "@/lib/supabase/server";
 
 export const ORG_COOKIE = "demail_org";
@@ -18,7 +19,14 @@ export const getOrgContext = cache(async () => {
   const sorted = [...rows].sort((a, b) => a.name.localeCompare(b.name));
   const wanted = (await cookies()).get(ORG_COOKIE)?.value;
   const current = sorted.find((o) => o.id === wanted) ?? sorted[0];
-  const orgs: Workspace[] = sorted.map(({ id, name, is_agency, agency_id, via_agency }) => ({ id, name, is_agency, agency_id, via_agency }));
+  // A client workspace's name crosses tenants (set by the agency, seen by agency staff and client members), so it gets the name check.
+  const orgs: Workspace[] = sorted.map(({ id, name, is_agency, agency_id, via_agency }) => ({
+    id,
+    name: via_agency || agency_id ? displayName(name, "Client workspace") : cleanText(name, 100) || "Workspace",
+    is_agency,
+    agency_id,
+    via_agency,
+  }));
   const org = orgs.find((o) => o.id === current.id)!;
   const role: Role = current.role;
   return { supabase, user: auth.user, org, orgs, role, canManage: role === "owner" || role === "admin" };

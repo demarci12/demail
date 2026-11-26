@@ -3,6 +3,7 @@ import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { displayName } from "@/lib/input";
 import { createClientWorkspace, leaveAgency, openClient, releaseClient, turnIntoAgency, turnOffAgency } from "./actions";
 export default async function AgencyPage({ searchParams }: { searchParams: Promise<{ error?: string; msg?: string }> }) {
   const { error, msg } = await searchParams;
@@ -50,7 +51,7 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
               <tbody>
                 {rows.map((c) => (
                   <tr key={c.id} className="border-t border-slate-100 align-top">
-                    <td className="py-2">{c.name}</td>
+                    <td className="py-2">{displayName(c.name, "Client workspace")}</td>
                     <td className="py-2">{c.contacts}</td>
                     <td className="py-2">{c.active_campaigns}</td>
                     <td className="py-2">{c.sent_7d}</td>
@@ -118,7 +119,7 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
   }
   if (org.agency_id) {
     const { data: agencyRows } = await supabase.rpc("workspace_agency", { p_org: org.id });
-    const agencyName = agencyRows?.[0]?.agency_name ?? "an agency";
+    const agencyName = displayName(agencyRows?.[0]?.agency_name, "an agency");
     return (
       <div className="flex max-w-3xl flex-col gap-6">
         <PageHeader title="Agency" />

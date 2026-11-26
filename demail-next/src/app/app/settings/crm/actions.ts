@@ -119,6 +119,8 @@ export async function syncCrmNow() {
 export async function retrySkippedReplies() {
   const { org } = await manager();
   const admin = createAdminClient();
+  const { data: conn } = await admin.from("crm_connections").select("enabled, push_replies").eq("organization_id", org.id).eq("provider", PROVIDER).maybeSingle();
+  if (!conn?.enabled || !conn.push_replies) return fail("Turn on Enabled and Push replies under Options to retry skipped replies.");
   const { data, error } = await admin
     .from("crm_push_skips")
     .update({ retry_requested: true })

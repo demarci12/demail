@@ -28,6 +28,8 @@ export default async function CrmSettingsPage({ searchParams }: { searchParams: 
     ? await supabase.from("thread_messages").select("id, thread_id, from_email, subject").eq("organization_id", org.id).in("id", skipIds)
     : { data: [] as { id: string; thread_id: string; from_email: string | null; subject: string | null }[] };
   const messageById = new Map((skipMessages ?? []).map((m) => [m.id, m]));
+  // Retry runs with the push, so it is offered only while the push can run.
+  const canRetry = !!conn?.enabled && !!conn?.push_replies;
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader title="CRM" />
@@ -96,13 +98,18 @@ export default async function CrmSettingsPage({ searchParams }: { searchParams: 
               );
             })}
           </ul>
+          {!canRetry && (
+            <p className="text-slate-600">Retry is available while the connection is enabled and Push replies is on. Until then nothing is sent to HubSpot.</p>
+          )}
           {canManage && (
             <div className="flex gap-2">
-              <form action={retrySkippedReplies}>
-                <Button type="submit" variant="secondary">
-                  Retry
-                </Button>
-              </form>
+              {canRetry && (
+                <form action={retrySkippedReplies}>
+                  <Button type="submit" variant="secondary">
+                    Retry
+                  </Button>
+                </form>
+              )}
               <form action={dismissSkippedReplies}>
                 <Button type="submit" variant="danger">
                   Dismiss

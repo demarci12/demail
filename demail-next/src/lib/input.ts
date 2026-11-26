@@ -42,6 +42,18 @@ export function isSafeName(s: string): boolean {
 export function isSafeCompany(s: string): boolean {
   return !hasLinkish(s);
 }
+// A free-text answer that can become a merge field: quotes and brackets are fine, tags, merge braces, links, addresses and hostnames are not.
+export function isSafeAnswer(s: string): boolean {
+  const lower = s.toLowerCase();
+  if (/[<>{}@]/.test(s) || lower.includes("://") || lower.includes("www.") || /https?:/i.test(s)) return false;
+  if (HOSTNAME.test(s.replace(/[\u3002\uFF0E\uFF61]/g, "."))) return false;
+  return !COMBINING_RUN.test(s);
+}
+// A name chosen in another workspace, cleaned at render: anything that fails the name rules shows the fallback.
+export function displayName(value: unknown, fallback: string, max = 100): string {
+  const s = cleanText(value, max);
+  return s && isSafeName(s) ? s : fallback;
+}
 
 export function isHttpsUrl(s: string, max = 500): boolean {
   if (typeof s !== "string" || s.length === 0 || s.length > max) return false;
@@ -160,9 +172,9 @@ export type SubmissionContact = {
 };
 export type SubmissionResult =
   | { ok: true; contact: SubmissionContact; answers: Record<string, string | boolean>; consented: boolean }
-  | { ok: false; error: "invalid" | "name" | "consent" };
+  | { ok: false; error: "invalid" | "name" | "link" | "consent" };
 
-// Reads f_<key> inputs and the consent box, and maps answers onto contact fields.
+// Reads f_<key> inputs and the consent box, and maps answers onto contact fields; only checked text reaches custom (merge) fields.
 export function validateSubmission(fields: FormField[], get: (name: string) => string | null, consentRequired: boolean): SubmissionResult {
   const answers: Record<string, string | boolean> = {};
   const custom: Record<string, string | boolean> = {};
@@ -211,7 +223,12 @@ export function validateSubmission(fields: FormField[], get: (name: string) => s
         contact.phone = value;
         break;
       case "custom":
-        custom[f.key] = value;
+        // Dropdown values come from the form owner; an email answer stays in the submission only.
+        if (f.type === "select") custom[f.key] = value;
+        else if (f.type !== "email") {
+          if (!isSafeAnswer(value)) return { ok: false, error: "link" };
+          custom[f.key] = value;
+        }
         break;
       default:
         break;

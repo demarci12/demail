@@ -79,8 +79,9 @@ export function aiEnv() {
 const formsSchema = z.object({
   TURNSTILE_SITE_KEY: z.string().min(1).max(200).optional(),
   TURNSTILE_SECRET_KEY: z.string().min(1).max(200).optional(),
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).optional(),
 });
-// Optional Cloudflare Turnstile keys for hosted forms; both unset means Turnstile is off.
+// Optional Cloudflare Turnstile keys and trusted proxy hops for hosted forms; both keys unset means Turnstile is off.
 export function formsEnv() {
   const blank = (v: string | undefined) => (v === "" ? undefined : v);
   const raw = Object.fromEntries(Object.keys(formsSchema.shape).map((k) => [k, blank(process.env[k])]));

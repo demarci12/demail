@@ -2,6 +2,7 @@ import { getOrgContext } from "@/lib/org";
 import { Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
+import { displayName } from "@/lib/input";
 import { changeRole } from "./actions";
 import { InviteForm } from "./invite-form";
 
@@ -12,7 +13,7 @@ export default async function MembersPage() {
     supabase.from("invitations").select("id, email, role, expires_at").eq("organization_id", org.id).is("accepted_at", null).gt("expires_at", new Date().toISOString()),
     org.agency_id ? supabase.rpc("workspace_agency", { p_org: org.id }) : Promise.resolve({ data: null }),
   ]);
-  const agencyName = agencyRows?.[0]?.agency_name;
+  const agencyName = agencyRows?.[0] ? displayName(agencyRows[0].agency_name, "your agency") : null;
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader title="Members" />

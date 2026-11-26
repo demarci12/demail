@@ -2,11 +2,13 @@ import "server-only";
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { displayName } from "@/lib/input";
 import { createAdminClient } from "@/lib/supabase/admin";
 type Row = Database["public"]["Tables"]["org_branding"]["Row"];
 export type Branding = Pick<Row, "brand_name" | "logo_url" | "support_url" | "privacy_url" | "terms_url" | "accent_color" | "hide_powered_by">;
+// The brand is set in the agency and shown in client workspaces and public forms, so its name is checked again here.
 const pick = (r: Row): Branding => ({
-  brand_name: r.brand_name,
+  brand_name: displayName(r.brand_name, "Demail", 60),
   logo_url: r.logo_url,
   support_url: r.support_url,
   privacy_url: r.privacy_url,

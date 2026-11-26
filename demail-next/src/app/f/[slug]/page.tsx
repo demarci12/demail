@@ -16,6 +16,7 @@ const HEX_RE = /^#[0-9a-f]{6}$/;
 const ERRORS: Record<string, string> = {
   invalid: "Check the highlighted fields and try again.",
   name: "Names cannot contain links, web or email addresses.",
+  link: "Answers cannot contain links, web or email addresses.",
   consent: "Please tick the consent box.",
   captcha: "The spam check did not pass. Try again.",
   expired: "This page was open too long or sent too fast. Try again.",

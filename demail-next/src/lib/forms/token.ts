@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { serverEnv } from "@/lib/env";
+import { formsEnv, serverEnv } from "@/lib/env";
 import { ipPrefix } from "@/lib/input";
 const MIN_AGE_MS = 3_000;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -30,9 +30,14 @@ export function rateBucket(formId: string, ip: string | null, now = new Date()) 
   const day = now.toISOString().slice(0, 10);
   return hmac(`b:${formId}:${ipPrefix(ip)}:${day}`).toString("hex").slice(0, 32);
 }
+// Only proxy-written headers name the client: unset reads X-Real-IP, 0 trusts no header, N reads the Nth X-Forwarded-For entry from the right.
 export function clientIp(req: Request): string | null {
-  const real = req.headers.get("x-real-ip")?.trim();
-  if (real) return real;
-  const first = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return first || null;
+  const hops = formsEnv().TRUSTED_PROXY_HOPS;
+  if (hops === undefined) return req.headers.get("x-real-ip")?.trim() || null;
+  if (hops === 0) return null;
+  const chain = (req.headers.get("x-forwarded-for") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return chain.length >= hops ? chain[chain.length - hops] : null;
 }

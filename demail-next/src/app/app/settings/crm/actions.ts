@@ -6,7 +6,7 @@ import { getOrgContext } from "@/lib/org";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { canSeal, sealFor } from "@/lib/crypto/secretbox";
 import { CrmError, checkToken, portalId } from "@/lib/crm/hubspot";
-import { runCrmTick } from "@/lib/crm/run";
+import { crmBackoffMs, runCrmTick } from "@/lib/crm/run";
 const PATH = "/app/settings/crm";
 const PROVIDER = "hubspot" as const;
 const fail = (message: string): never => redirect(`${PATH}?error=${encodeURIComponent(message)}`);
@@ -85,10 +85,17 @@ export async function saveCrmOptions(formData: FormData) {
 }
 export async function syncCrmNow() {
   const { supabase, org } = await getOrgContext();
-  const { data: conn } = await supabase.from("crm_connections").select("enabled, last_synced_at").eq("organization_id", org.id).eq("provider", PROVIDER).maybeSingle();
+  const { data: conn } = await supabase
+    .from("crm_connections")
+    .select("enabled, last_synced_at, consecutive_errors, next_sync_at")
+    .eq("organization_id", org.id)
+    .eq("provider", PROVIDER)
+    .maybeSingle();
   if (!conn) return fail("Connect HubSpot first.");
   if (!conn.enabled) return fail("HubSpot sync is turned off.");
-  if (conn.last_synced_at && Date.now() - new Date(conn.last_synced_at).getTime() < 60_000) return fail("Synced a moment ago. Try again in a minute.");
+  // A failed run sets next_sync_at to its own time plus the backoff, so that is when it was tried.
+  const lastTry = conn.consecutive_errors > 0 ? new Date(conn.next_sync_at).getTime() - crmBackoffMs(conn.consecutive_errors) : conn.last_synced_at ? new Date(conn.last_synced_at).getTime() : null;
+  if (lastTry !== null && Date.now() - lastTry < 60_000) return fail(conn.consecutive_errors > 0 ? "Tried a moment ago. Try again in a minute." : "Synced a moment ago. Try again in a minute.");
   const admin = createAdminClient();
   const { error } = await admin.from("crm_connections").update({ next_sync_at: new Date().toISOString() }).eq("organization_id", org.id).eq("provider", PROVIDER);
   if (error) return fail("Could not start the sync.");
@@ -105,7 +112,8 @@ export async function syncCrmNow() {
     const { data: after } = await admin.from("crm_connections").select("last_error").eq("organization_id", org.id).eq("provider", PROVIDER).maybeSingle();
     return fail(after?.last_error ?? "Sync failed, retrying");
   }
-  return done(`Synced: ${result.pulled} HubSpot contacts read, ${result.created} created here, ${result.pushed} replies added as notes.`);
+  const skipped = result.skipped > 0 ? ` ${result.skipped} replies were skipped because HubSpot refused the contact.` : "";
+  return done(`Synced: ${result.pulled} HubSpot contacts read, ${result.created} created here, ${result.pushed} replies added as notes.${skipped}`);
 }
 export async function disconnectCrm() {
   const { org } = await manager();

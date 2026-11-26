@@ -7,7 +7,7 @@ import { CrmError, createContact, createNote, searchContactsSince } from "./hubs
 import { fillBlanks, mapHubSpotContact, millis, replyNoteBody } from "./map";
 type Admin = SupabaseClient<Database>;
 type Connection = Database["public"]["Tables"]["crm_connections"]["Row"];
-export type CrmTickResult = { claimed: number; pulled: number; created: number; pushed: number; failed: number };
+export type CrmTickResult = { claimed: number; pulled: number; created: number; pushed: number; skipped: number; failed: number };
 const BUDGET_MS = 45_000;
 const MAX_PAGES = 5;
 const PUSH_BATCH = 25;
@@ -82,6 +82,28 @@ async function pull(admin: Admin, conn: Connection, token: string, result: CrmTi
   const pullCursor = maxMs > cursor ? maxMs : fullPages === MAX_PAGES ? cursor + 1 : conn.pull_cursor;
   return { pullCursor, morePending: !!after };
 }
+// HubSpot answers 400, 404 or 422 when one record is invalid or gone, so retrying that message cannot help.
+const rejected = (e: unknown) => e instanceof CrmError && (e.status === 400 || e.status === 404 || e.status === 422);
+type PushContact = { id: string; email: string; first_name: string | null; last_name: string | null; company: string | null; phone: string | null };
+async function noteForContact(admin: Admin, org: string, token: string, contact: PushContact, external: Map<string, string>, note: { timestamp: string; body: string }) {
+  const linked = external.get(contact.id);
+  if (linked) {
+    try {
+      await createNote(token, linked, note);
+      return;
+    } catch (e) {
+      if (!rejected(e)) throw e;
+    }
+    // The linked HubSpot record refused the note: drop the link and find or create the contact by email once.
+    const { error } = await admin.from("crm_contact_links").delete().eq("organization_id", org).eq("provider", PROVIDER).eq("contact_id", contact.id);
+    if (error) throw new Error("Could not remove contact link");
+    external.delete(contact.id);
+  }
+  const externalId = await createContact(token, { email: contact.email, firstname: contact.first_name, lastname: contact.last_name, company: contact.company, phone: contact.phone });
+  await linkContact(admin, org, contact.id, externalId);
+  external.set(contact.id, externalId);
+  await createNote(token, externalId, note);
+}
 async function push(admin: Admin, conn: Connection, token: string, result: CrmTickResult, deadline: number) {
   const org = conn.organization_id;
   const { data: messages, error } = await admin
@@ -95,7 +117,8 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
     .limit(PUSH_BATCH);
   if (error) throw new Error("Could not read replies");
   const rows = messages ?? [];
-  if (rows.length === 0) return false;
+  let skipped = 0;
+  if (rows.length === 0) return { full: false, skipped };
   const { data: threads } = await admin.from("threads").select("id, contact_id, campaign_id, subject").eq("organization_id", org).in("id", [...new Set(rows.map((m) => m.thread_id))]);
   const threadById = new Map((threads ?? []).map((t) => [t.id, t]));
   const contactIds = [...new Set((threads ?? []).map((t) => t.contact_id).filter((id): id is string => !!id))];
@@ -103,7 +126,7 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
   const [{ data: contacts }, { data: campaigns }, { data: links }] = await Promise.all([
     contactIds.length
       ? admin.from("contacts").select("id, email, first_name, last_name, company, phone").eq("organization_id", org).in("id", contactIds)
-      : Promise.resolve({ data: [] as { id: string; email: string; first_name: string | null; last_name: string | null; company: string | null; phone: string | null }[] }),
+      : Promise.resolve({ data: [] as PushContact[] }),
     campaignIds.length
       ? admin.from("campaigns").select("id, name").eq("organization_id", org).in("id", campaignIds)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
@@ -115,23 +138,11 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
   const campaignName = new Map((campaigns ?? []).map((c) => [c.id, c.name]));
   const external = new Map((links ?? []).map((l) => [l.contact_id, l.external_id]));
   for (const m of rows) {
-    if (Date.now() >= deadline) return true;
+    if (Date.now() >= deadline) return { full: true, skipped };
     const thread = threadById.get(m.thread_id);
     const contact = thread?.contact_id ? contactById.get(thread.contact_id) : undefined;
     if (thread && contact) {
-      let externalId = external.get(contact.id);
-      if (!externalId) {
-        externalId = await createContact(token, {
-          email: contact.email,
-          firstname: contact.first_name,
-          lastname: contact.last_name,
-          company: contact.company,
-          phone: contact.phone,
-        });
-        await linkContact(admin, org, contact.id, externalId);
-        external.set(contact.id, externalId);
-      }
-      await createNote(token, externalId, {
+      const note = {
         timestamp: m.sent_at,
         body: replyNoteBody({
           subject: m.subject ?? thread.subject,
@@ -139,20 +150,32 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
           campaignName: thread.campaign_id ? (campaignName.get(thread.campaign_id) ?? null) : null,
           body: m.body_text,
         }),
-      });
-      result.pushed++;
+      };
+      try {
+        await noteForContact(admin, org, token, contact, external, note);
+        result.pushed++;
+      } catch (e) {
+        // Auth, scope, rate and network errors still fail the tick; a rejected record is skipped.
+        if (!rejected(e)) throw e;
+        skipped++;
+        result.skipped++;
+        console.error("crm note skipped", { organization: org, message: m.id });
+      }
     }
     // Advance after each note so a crash repeats at most one.
     const { error: cursorError } = await admin.from("crm_connections").update({ push_cursor: m.created_at }).eq("organization_id", org).eq("provider", PROVIDER);
     if (cursorError) throw new Error("Could not advance push cursor");
   }
-  return rows.length === PUSH_BATCH;
+  return { full: rows.length === PUSH_BATCH, skipped };
 }
+// Wait after the nth consecutive failure: 2, 4, 8 ... minutes, at most an hour.
+export const crmBackoffMs = (n: number) => Math.min(60, 2 ** n) * 60_000;
+export const SKIPPED_REPLIES_ERROR = "HubSpot refused some replies (a deleted or invalid contact), so they were skipped.";
 // One CRM tick: claims due HubSpot connections, pulls changed contacts and pushes new replies as notes.
 export async function runCrmTick(opts: { organizationId?: string } = {}): Promise<CrmTickResult> {
   const admin = createAdminClient();
   const deadline = Date.now() + BUDGET_MS;
-  const result: CrmTickResult = { claimed: 0, pulled: 0, created: 0, pushed: 0, failed: 0 };
+  const result: CrmTickResult = { claimed: 0, pulled: 0, created: 0, pushed: 0, skipped: 0, failed: 0 };
   const { data: claimed, error } = await admin.rpc("claim_due_crm_syncs", { batch: 5, p_org: opts.organizationId });
   if (error) throw new Error("claim_due_crm_syncs failed");
   const connections = claimed ?? [];
@@ -167,20 +190,26 @@ export async function runCrmTick(opts: { organizationId?: string } = {}): Promis
       const { data: cred } = await admin.from("crm_credentials").select("ciphertext").eq("organization_id", org).eq("provider", PROVIDER).maybeSingle();
       if (!cred) throw new Error("missing credentials");
       const token = openFor("crm-token", cred.ciphertext);
-      let pullCursor = conn.pull_cursor;
       let morePending = false;
-      if (conn.pull_contacts) ({ pullCursor, morePending } = await pull(admin, conn, token, result, deadline));
-      const pushFull = conn.push_replies ? await push(admin, conn, token, result, deadline) : false;
+      if (conn.pull_contacts) {
+        const pulled = await pull(admin, conn, token, result, deadline);
+        morePending = pulled.morePending;
+        // Saved before push, so a push failure keeps this tick's pull progress.
+        if (pulled.pullCursor !== conn.pull_cursor) {
+          const { error: cursorError } = await admin.from("crm_connections").update({ pull_cursor: pulled.pullCursor }).eq("organization_id", org).eq("provider", PROVIDER);
+          if (cursorError) throw new Error("Could not advance pull cursor");
+        }
+      }
+      const pushed = conn.push_replies ? await push(admin, conn, token, result, deadline) : { full: false, skipped: 0 };
       const now = Date.now();
       await admin
         .from("crm_connections")
         .update({
           lease_until: null,
           last_synced_at: new Date(now).toISOString(),
-          last_error: null,
+          last_error: pushed.skipped > 0 ? SKIPPED_REPLIES_ERROR : null,
           consecutive_errors: 0,
-          pull_cursor: pullCursor,
-          next_sync_at: new Date(now + (morePending || pushFull ? 1 : 15) * 60_000).toISOString(),
+          next_sync_at: new Date(now + (morePending || pushed.full ? 1 : 15) * 60_000).toISOString(),
         })
         .eq("organization_id", org)
         .eq("provider", PROVIDER);
@@ -194,7 +223,7 @@ export async function runCrmTick(opts: { organizationId?: string } = {}): Promis
         .update({
           consecutive_errors: n,
           last_error: e instanceof CrmError ? e.message : "Sync failed, retrying",
-          next_sync_at: new Date(Date.now() + Math.min(60, 2 ** n) * 60_000).toISOString(),
+          next_sync_at: new Date(Date.now() + crmBackoffMs(n)).toISOString(),
           lease_until: null,
         })
         .eq("organization_id", org)

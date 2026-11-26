@@ -172,13 +172,25 @@ export async function draftStepWithAi(id: string, formData: FormData) {
 export async function applyAiDraftAsStep(id: string, draftId: string, formData: FormData) {
   const { supabase, org, user } = await stepsEditable(id);
   if (!uuid.safeParse(draftId).success) back(id, "error", "AI draft not found.");
-  const { data: draft } = await supabase.from("ai_drafts").select("id").eq("id", draftId).eq("organization_id", org.id).eq("campaign_id", id).eq("kind", "step").eq("status", "draft").maybeSingle();
-  if (!draft) back(id, "error", "AI draft not found.");
   const fields = stepFields("email", formData);
   if (!fields) back(id, "error", "An email step needs a subject and a body.");
+  const admin = createAdminClient();
+  // Claim the draft before inserting, so a double submit adds one step.
+  const { data: claimed } = await admin
+    .from("ai_drafts")
+    .update({ status: "used", approved_by: user.id, approved_at: new Date().toISOString() })
+    .eq("id", draftId)
+    .eq("organization_id", org.id)
+    .eq("campaign_id", id)
+    .eq("kind", "step")
+    .eq("status", "draft")
+    .select("id");
+  if (!claimed || claimed.length === 0) back(id, "error", "AI draft not found.");
   const error = await insertStep(supabase, org.id, id, fields!);
-  if (error) back(id, "error", "Could not add the step.");
-  await createAdminClient().from("ai_drafts").update({ status: "used", approved_by: user.id, approved_at: new Date().toISOString() }).eq("id", draftId).eq("organization_id", org.id).eq("status", "draft");
+  if (error) {
+    await admin.from("ai_drafts").update({ status: "draft", approved_by: null, approved_at: null }).eq("id", draftId).eq("organization_id", org.id).eq("status", "used");
+    back(id, "error", "Could not add the step.");
+  }
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", "Step added from the AI draft.");
 }

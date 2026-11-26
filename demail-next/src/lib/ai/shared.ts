@@ -49,7 +49,7 @@ function parseIpv6(ip: string): number[] | null {
   if (known > 7) return null;
   return [...left, ...Array(8 - known).fill(0), ...right, ...tail];
 }
-// True for loopback, private, link-local, CGNAT, unique-local, multicast and unspecified addresses.
+// True for loopback, private, link-local, CGNAT, unique-local, multicast, unspecified and IPv6 forms embedding one.
 export function isPrivateAddress(ip: string): boolean {
   const raw = ip.trim().replace(/^\[|\]$/g, "");
   const v4 = parseIpv4(raw);
@@ -57,10 +57,14 @@ export function isPrivateAddress(ip: string): boolean {
   if (!raw.includes(":")) return false;
   const g = parseIpv6(raw);
   if (!g) return true;
-  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
-    return privateIpv4([g[6] >> 8, g[6] & 255, g[7] >> 8, g[7] & 255]);
-  }
-  if (g.slice(0, 7).every((x) => x === 0) && (g[7] === 0 || g[7] === 1)) return true;
+  const v4At = (i: number) => privateIpv4([g[i] >> 8, g[i] & 255, g[i + 1] >> 8, g[i + 1] & 255]);
+  // IPv4-compatible and IPv4-mapped (::/96, ::ffff:0:0/96) and NAT64 (64:ff9b::/96) carry an IPv4 in the low 32 bits.
+  if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0 || g[5] === 0xffff)) return v4At(6);
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return v4At(6);
+  // Local-use NAT64 (64:ff9b:1::/48) translates to addresses chosen by the network.
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true;
+  // 6to4 (2002::/16) carries an IPv4 right after the prefix.
+  if (g[0] === 0x2002) return v4At(1);
   if ((g[0] & 0xfe00) === 0xfc00) return true;
   if ((g[0] & 0xffc0) === 0xfe80) return true;
   return (g[0] & 0xff00) === 0xff00;

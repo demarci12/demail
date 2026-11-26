@@ -7,13 +7,16 @@ import { InviteForm } from "./invite-form";
 
 export default async function MembersPage() {
   const { supabase, org, user, role, canManage } = await getOrgContext();
-  const [{ data: members }, { data: invites }] = await Promise.all([
+  const [{ data: members }, { data: invites }, { data: agencyRows }] = await Promise.all([
     supabase.from("organization_members").select("user_id, role, created_at").eq("organization_id", org.id).order("created_at"),
     supabase.from("invitations").select("id, email, role, expires_at").eq("organization_id", org.id).is("accepted_at", null).gt("expires_at", new Date().toISOString()),
+    org.agency_id ? supabase.rpc("workspace_agency", { p_org: org.id }) : Promise.resolve({ data: null }),
   ]);
+  const agencyName = agencyRows?.[0]?.agency_name;
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader title="Members" />
+      {agencyName && <p className="text-sm text-slate-600">Staff of {agencyName} can also open this workspace with their agency role.</p>}
       <Card>
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-slate-500">

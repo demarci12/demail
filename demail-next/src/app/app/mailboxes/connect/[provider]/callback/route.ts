@@ -28,8 +28,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user || auth.user.id !== pending.user) return fail("Sign in again and retry.");
-  const { data: member } = await supabase.from("organization_members").select("role").eq("organization_id", pending.org).eq("user_id", auth.user.id).maybeSingle();
-  if (!member || (member.role !== "owner" && member.role !== "admin")) return fail("Only owners and admins can connect mailboxes.");
+  const { data: allowed } = await supabase.rpc("has_org_role", { org: pending.org, roles: ["owner", "admin"] });
+  if (allowed !== true) return fail("Only owners and admins can connect mailboxes.");
   try {
     const tokens = await exchangeCode(provider, code, pending.verifier);
     if (!tokens.refresh_token) return fail("The provider returned no refresh token. Remove the app from the account's connected apps and retry.");

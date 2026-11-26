@@ -12,6 +12,8 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          is_agency: boolean;
+          agency_id: string | null;
         };
         Insert: {
           id?: string;
@@ -19,6 +21,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          is_agency?: boolean;
+          agency_id?: string | null;
         };
         Update: {
           id?: string;
@@ -26,6 +30,8 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          is_agency?: boolean;
+          agency_id?: string | null;
         };
         Relationships: [];
       };
@@ -1590,6 +1596,34 @@ export type Database = {
         Args: { p_form: string; p_bucket: string; p_contact: Json; p_answers: Json; p_consented: boolean };
         Returns: string;
       };
+      my_workspaces: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          name: string;
+          role: Database["public"]["Enums"]["member_role"];
+          is_agency: boolean;
+          agency_id: string | null;
+          via_agency: boolean;
+        }[];
+      };
+      set_agency_mode: { Args: { p_org: string; p_on: boolean }; Returns: undefined };
+      create_client_workspace: { Args: { p_agency: string; p_name: string }; Returns: string };
+      detach_client_workspace: { Args: { p_client: string }; Returns: undefined };
+      agency_clients: {
+        Args: { p_agency: string };
+        Returns: {
+          id: string;
+          name: string;
+          created_at: string;
+          contacts: number;
+          active_campaigns: number;
+          sent_7d: number;
+          unread_threads: number;
+          direct_owners: number;
+        }[];
+      };
+      workspace_agency: { Args: { p_org: string }; Returns: { agency_id: string; agency_name: string }[] };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

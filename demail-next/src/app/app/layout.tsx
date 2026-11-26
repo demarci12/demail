@@ -16,6 +16,7 @@ const nav = [
   { href: "/app/settings/members", label: "Members" },
   { href: "/app/settings/ai", label: "AI" },
   { href: "/app/settings/crm", label: "CRM" },
+  { href: "/app/agency", label: "Agency" },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,6 +28,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .eq("organization_id", org.id)
     .eq("status", "open")
     .eq("is_unread", true);
+  const direct = orgs.filter((o) => !o.via_agency);
+  const agencies = orgs
+    .filter((o) => o.is_agency && !o.via_agency)
+    .map((a) => ({ agency: a, clients: orgs.filter((o) => o.via_agency && o.agency_id === a.id) }))
+    .filter((g) => g.clients.length > 0);
   async function switchOrg(formData: FormData) {
     "use server";
     // The cookie is only a hint; getOrgContext re-checks membership on every request.
@@ -42,10 +48,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </Link>
         <form action={switchOrg} className="flex gap-1">
           <Select name="workspace" defaultValue={org.id} aria-label="Workspace">
-            {orgs.map((o) => (
+            {direct.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
               </option>
+            ))}
+            {agencies.map(({ agency, clients }) => (
+              <optgroup key={agency.id} label={`${agency.name} clients`}>
+                {clients.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </Select>
           <Button type="submit" variant="secondary" className="px-2">

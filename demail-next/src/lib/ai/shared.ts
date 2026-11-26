@@ -103,3 +103,20 @@ export function parseJsonObject(text: string): Record<string, unknown> | null {
     return null;
   }
 }
+// A step draft is a JSON object with a short subject and a plain-text body.
+export function parseStepDraft(text: string): { subject: string; body: string } | null {
+  const obj = parseJsonObject(text);
+  if (!obj || typeof obj.subject !== "string" || typeof obj.body !== "string") return null;
+  const subject = obj.subject.trim();
+  const body = obj.body.trim();
+  if (subject.length < 1 || subject.length > 200 || body.length < 1 || body.length > 5000) return null;
+  return { subject, body };
+}
+// A reply draft is plain text; a surrounding code fence and a leading Subject line are dropped.
+export function cleanReplyDraft(text: string): string | null {
+  let out = text.trim();
+  const fenced = /^```[a-zA-Z]*\s*\n?([\s\S]*?)\n?```$/.exec(out);
+  if (fenced) out = fenced[1].trim();
+  out = out.replace(/^subject:[^\n]*(\n|$)/i, "").trim();
+  return out.length >= 1 && out.length <= 5000 ? out : null;
+}

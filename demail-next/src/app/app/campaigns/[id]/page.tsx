@@ -7,7 +7,7 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { SAMPLE_CONTACT, contactData, renderTemplate, type MergeData } from "@/lib/merge";
 import { CampaignFields } from "../settings-fields";
 import { MergeInsert } from "../merge-insert";
-import { addStep, addVariant, deleteStep, deleteVariant, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, sendTestStep, updateCampaign, updateStep, updateVariant } from "../actions";
+import { addStep, addVariant, applyAiDraftAsStep, deleteStep, deleteVariant, discardAiDraft, draftStepWithAi, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, sendTestStep, updateCampaign, updateStep, updateVariant } from "../actions";
 function waitParts(seconds: number | null) {
   const s = seconds ?? 86400;
   if (s % 86400 === 0) return { amount: s / 86400, unit: "days" };
@@ -129,7 +129,7 @@ export default async function CampaignPage({
   const { supabase, org, user } = await getOrgContext();
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!campaign) notFound();
-  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }, { data: messageStats }] = await Promise.all([
+  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }, { data: messageStats }, { data: aiSettings }, { data: aiDrafts }] = await Promise.all([
     supabase.from("campaign_steps").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("position"),
     supabase.from("mailboxes").select("id, email, from_name, status").eq("organization_id", org.id).order("email"),
     supabase.from("campaign_mailboxes").select("mailbox_id").eq("campaign_id", id).eq("organization_id", org.id),
@@ -138,6 +138,8 @@ export default async function CampaignPage({
     supabase.from("contacts").select("*").eq("organization_id", org.id).order("created_at").limit(1).maybeSingle(),
     supabase.rpc("campaign_engagement", { p_campaign: id }),
     supabase.rpc("campaign_message_stats", { p_campaign: id }),
+    supabase.from("ai_settings").select("enabled").eq("organization_id", org.id).maybeSingle(),
+    supabase.from("ai_drafts").select("id, subject, body").eq("organization_id", org.id).eq("campaign_id", id).eq("kind", "step").eq("status", "draft").order("created_at", { ascending: false }).limit(3),
   ]);
   const stepIds = (steps ?? []).map((s) => s.id);
   const { data: variantRows } = stepIds.length
@@ -387,6 +389,72 @@ export default async function CampaignPage({
               Add wait
             </Button>
           </form>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4">
+          <h3 className="text-sm font-medium">Write with AI</h3>
+          {!aiSettings?.enabled ? (
+            <p className="text-sm text-slate-500">
+              AI is off. An owner or admin can turn it on in{" "}
+              <Link href="/app/settings/ai" className="text-sky-700">
+                Settings, AI
+              </Link>
+              .
+            </p>
+          ) : (
+            !locked && (
+              <form action={draftStepWithAi.bind(null, id)} className="flex flex-col gap-3">
+                <Field label="Brief">
+                  <textarea
+                    name="brief"
+                    required
+                    minLength={10}
+                    maxLength={2000}
+                    rows={3}
+                    placeholder="What you offer, who it is for, and the one thing you want them to do"
+                    className="w-full rounded-md border border-slate-300 bg-white p-3 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100"
+                  />
+                </Field>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label="Tone">
+                    <Select name="tone" defaultValue="friendly">
+                      <option value="friendly">Friendly</option>
+                      <option value="direct">Direct</option>
+                      <option value="formal">Formal</option>
+                    </Select>
+                  </Field>
+                  <Field label="Position">
+                    <Select name="position" defaultValue={(steps ?? []).some((s) => s.type === "email") ? "follow_up" : "first"}>
+                      <option value="first">First email</option>
+                      <option value="follow_up">Follow-up</option>
+                    </Select>
+                  </Field>
+                  <Button type="submit" variant="secondary">
+                    Draft with AI
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">Each draft is one AI call. Drafts are never sent; you edit and add them as a step.</p>
+              </form>
+            )
+          )}
+          {(aiDrafts ?? []).map((d) => (
+            <div key={d.id} className="rounded-md border border-slate-200 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-medium uppercase text-slate-500">AI draft</p>
+                <form action={discardAiDraft.bind(null, id, d.id)}>
+                  <Button type="submit" variant="secondary" className="h-7 px-2">
+                    Discard
+                  </Button>
+                </form>
+              </div>
+              <form action={applyAiDraftAsStep.bind(null, id, d.id)} className="flex flex-col gap-3">
+                <EmailFields subject={d.subject} body={d.body} />
+                <Button type="submit" disabled={locked}>
+                  Add as email step
+                </Button>
+              </form>
+              <Preview subject={d.subject ?? ""} body={d.body} data={sampleData} to={sample?.email ?? "a sample contact"} />
+            </div>
+          ))}
         </div>
       </Card>
       <Card>

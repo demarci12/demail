@@ -1156,6 +1156,57 @@ export type Database = {
         };
         Relationships: [];
       };
+      ai_drafts: {
+        Row: {
+          id: string;
+          organization_id: string;
+          kind: "step" | "reply";
+          campaign_id: string | null;
+          thread_id: string | null;
+          brief: string | null;
+          subject: string | null;
+          body: string;
+          status: "draft" | "used" | "sent" | "discarded";
+          created_by: string | null;
+          approved_by: string | null;
+          approved_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          kind: "step" | "reply";
+          campaign_id?: string | null;
+          thread_id?: string | null;
+          brief?: string | null;
+          subject?: string | null;
+          body: string;
+          status?: "draft" | "used" | "sent" | "discarded";
+          created_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          kind?: "step" | "reply";
+          campaign_id?: string | null;
+          thread_id?: string | null;
+          brief?: string | null;
+          subject?: string | null;
+          body?: string;
+          status?: "draft" | "used" | "sent" | "discarded";
+          created_by?: string | null;
+          approved_by?: string | null;
+          approved_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {

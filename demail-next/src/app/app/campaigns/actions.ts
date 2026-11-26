@@ -4,9 +4,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
 import { publicEnv } from "@/lib/env";
-import { SAMPLE_CONTACT, contactData, renderTemplate } from "@/lib/merge";
+import { MERGE_FIELDS, SAMPLE_CONTACT, contactData, renderTemplate } from "@/lib/merge";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendStepTest } from "@/lib/send/test-send";
+import { aiCall, aiErrorMessage } from "@/lib/ai/run";
+import { stepDraftMessages } from "@/lib/ai/prompts";
+import { parseStepDraft } from "@/lib/ai/shared";
 const uuid = z.string().uuid();
 function back(id: string, key: "error" | "msg", message: string): never {
   return redirect(`/app/campaigns/${id}?${key}=${encodeURIComponent(message)}`);
@@ -126,15 +129,65 @@ async function stepsEditable(id: string) {
   if (ctx.campaign.status === "active") back(id, "error", "Pause the campaign before changing steps.");
   return ctx;
 }
+type OrgSupabase = Awaited<ReturnType<typeof getOrgContext>>["supabase"];
+async function insertStep(supabase: OrgSupabase, orgId: string, id: string, fields: NonNullable<ReturnType<typeof stepFields>>) {
+  const { data: last } = await supabase.from("campaign_steps").select("position").eq("campaign_id", id).eq("organization_id", orgId).order("position", { ascending: false }).limit(1).maybeSingle();
+  const { error } = await supabase.from("campaign_steps").insert({ ...fields, campaign_id: id, organization_id: orgId, position: (last?.position ?? -1) + 1 });
+  return error;
+}
 export async function addStep(id: string, type: "email" | "wait", formData: FormData) {
   const { supabase, org } = await stepsEditable(id);
   const fields = stepFields(type, formData);
   if (!fields) back(id, "error", type === "email" ? "An email step needs a subject and a body." : "A wait step needs an amount and a unit.");
-  const { data: last } = await supabase.from("campaign_steps").select("position").eq("campaign_id", id).eq("organization_id", org.id).order("position", { ascending: false }).limit(1).maybeSingle();
-  const { error } = await supabase.from("campaign_steps").insert({ ...fields!, campaign_id: id, organization_id: org.id, position: (last?.position ?? -1) + 1 });
+  const error = await insertStep(supabase, org.id, id, fields!);
   if (error) back(id, "error", "Could not add the step.");
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", "Step added.");
+}
+const draftSchema = z.object({
+  brief: z.string().trim().min(10).max(2000),
+  tone: z.enum(["friendly", "direct", "formal"]),
+  position: z.enum(["first", "follow_up"]),
+});
+// One AI call per click; the draft is stored for review and never sent or added on its own.
+export async function draftStepWithAi(id: string, formData: FormData) {
+  const { org, user } = await stepsEditable(id);
+  const parsed = draftSchema.safeParse({ brief: formData.get("brief"), tone: formData.get("tone"), position: formData.get("position") });
+  if (!parsed.success) back(id, "error", "Write a brief of 10 to 2000 characters and pick a tone and position.");
+  const { brief, tone, position } = parsed.data!;
+  const admin = createAdminClient();
+  let text: string;
+  try {
+    text = await aiCall(admin, org.id, stepDraftMessages({ workspace: org.name, brief, tone, position, mergeFields: [...MERGE_FIELDS] }), { maxTokens: 700, temperature: 0.7 });
+  } catch (e) {
+    return back(id, "error", aiErrorMessage(e));
+  }
+  const draft = parseStepDraft(text);
+  if (!draft) back(id, "error", "The AI draft could not be read. Try again.");
+  const { error } = await admin.from("ai_drafts").insert({ organization_id: org.id, kind: "step", campaign_id: id, brief, subject: draft!.subject, body: draft!.body, created_by: user.id });
+  if (error) back(id, "error", "Could not save the AI draft.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "AI draft ready. Review it below before adding it.");
+}
+export async function applyAiDraftAsStep(id: string, draftId: string, formData: FormData) {
+  const { supabase, org, user } = await stepsEditable(id);
+  if (!uuid.safeParse(draftId).success) back(id, "error", "AI draft not found.");
+  const { data: draft } = await supabase.from("ai_drafts").select("id").eq("id", draftId).eq("organization_id", org.id).eq("campaign_id", id).eq("kind", "step").eq("status", "draft").maybeSingle();
+  if (!draft) back(id, "error", "AI draft not found.");
+  const fields = stepFields("email", formData);
+  if (!fields) back(id, "error", "An email step needs a subject and a body.");
+  const error = await insertStep(supabase, org.id, id, fields!);
+  if (error) back(id, "error", "Could not add the step.");
+  await createAdminClient().from("ai_drafts").update({ status: "used", approved_by: user.id, approved_at: new Date().toISOString() }).eq("id", draftId).eq("organization_id", org.id).eq("status", "draft");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "Step added from the AI draft.");
+}
+export async function discardAiDraft(id: string, draftId: string) {
+  const { org } = await editableCampaign(id);
+  if (!uuid.safeParse(draftId).success) back(id, "error", "AI draft not found.");
+  await createAdminClient().from("ai_drafts").update({ status: "discarded" }).eq("id", draftId).eq("organization_id", org.id).eq("campaign_id", id).eq("status", "draft");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "AI draft discarded.");
 }
 export async function updateStep(id: string, stepId: string, type: "email" | "wait", formData: FormData) {
   const { supabase, org } = await stepsEditable(id);

@@ -1,0 +1,105 @@
+// Pure AI helpers with no imports, so the check script can load this file directly.
+export const DEFAULT_AI_BASE_URL = "https://api.openai.com/v1";
+export const DEFAULT_AI_MODEL = "gpt-4o-mini";
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+function parseIpv4(ip: string): number[] | null {
+  const m = IPV4.exec(ip);
+  if (!m) return null;
+  const parts = m.slice(1).map(Number);
+  return parts.every((p) => p <= 255) ? parts : null;
+}
+function privateIpv4([a, b]: number[]): boolean {
+  return (
+    a === 0 ||
+    a === 10 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+// Expands an IPv6 literal (with an optional dotted IPv4 tail) to eight 16-bit groups.
+function parseIpv6(ip: string): number[] | null {
+  let s = ip.toLowerCase();
+  const zone = s.indexOf("%");
+  if (zone >= 0) s = s.slice(0, zone);
+  const tail: number[] = [];
+  const lastColon = s.lastIndexOf(":");
+  if (s.slice(lastColon + 1).includes(".")) {
+    const v4 = parseIpv4(s.slice(lastColon + 1));
+    if (!v4) return null;
+    tail.push((v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]);
+    const prefix = s.slice(0, lastColon + 1);
+    s = prefix.endsWith("::") ? prefix : prefix.slice(0, -1);
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const group = (h: string) => (h === "" ? [] : h.split(":"));
+  const head = group(halves[0]);
+  const rest = halves.length === 2 ? group(halves[1]) : [];
+  const toNum = (g: string) => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : NaN);
+  const left = head.map(toNum);
+  const right = rest.map(toNum);
+  if ([...left, ...right].some(Number.isNaN)) return null;
+  const known = left.length + right.length + tail.length;
+  if (halves.length === 1) return known === 8 ? [...left, ...right, ...tail] : null;
+  if (known > 7) return null;
+  return [...left, ...Array(8 - known).fill(0), ...right, ...tail];
+}
+// True for loopback, private, link-local, CGNAT, unique-local, multicast and unspecified addresses.
+export function isPrivateAddress(ip: string): boolean {
+  const raw = ip.trim().replace(/^\[|\]$/g, "");
+  const v4 = parseIpv4(raw);
+  if (v4) return privateIpv4(v4);
+  if (!raw.includes(":")) return false;
+  const g = parseIpv6(raw);
+  if (!g) return true;
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
+    return privateIpv4([g[6] >> 8, g[6] & 255, g[7] >> 8, g[7] & 255]);
+  }
+  if (g.slice(0, 7).every((x) => x === 0) && (g[7] === 0 || g[7] === 1)) return true;
+  if ((g[0] & 0xfe00) === 0xfc00) return true;
+  if ((g[0] & 0xffc0) === 0xfe80) return true;
+  return (g[0] & 0xff00) === 0xff00;
+}
+const BLOCKED_SUFFIXES = [".localhost", ".local", ".internal", ".lan"];
+// A workspace base URL must be public https with no credentials; returned without a trailing slash.
+export function checkBaseUrl(raw: string): { ok: true; url: string } | { ok: false; message: string } {
+  const value = raw.trim();
+  if (!value || value.length > 300) return { ok: false, message: "The base URL must be at most 300 characters." };
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return { ok: false, message: "Enter a valid base URL such as https://api.openai.com/v1." };
+  }
+  if (url.protocol !== "https:") return { ok: false, message: "The base URL must start with https://." };
+  if (url.username || url.password) return { ok: false, message: "The base URL must not contain a user name or password." };
+  if (url.search || url.hash) return { ok: false, message: "The base URL must not contain a query or fragment." };
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (!host || host === "localhost" || BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) {
+    return { ok: false, message: "The base URL must point at a public host." };
+  }
+  if ((parseIpv4(host) || host.includes(":")) && isPrivateAddress(host)) {
+    return { ok: false, message: "The base URL must point at a public host." };
+  }
+  const out = url.href.replace(/\/+$/, "");
+  if (out.length > 300) return { ok: false, message: "The base URL must be at most 300 characters." };
+  return { ok: true, url: out };
+}
+// Pulls the first JSON object out of model output, tolerating code fences; never throws.
+export function parseJsonObject(text: string): Record<string, unknown> | null {
+  const stripped = text.replace(/```[a-zA-Z]*\s*/g, "").replace(/```/g, "");
+  const start = stripped.indexOf("{");
+  const end = stripped.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    const value: unknown = JSON.parse(stripped.slice(start, end + 1));
+    return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}

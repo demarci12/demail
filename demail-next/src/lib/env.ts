@@ -64,3 +64,15 @@ const webhookSchema = z.object({
 export function webhookEnv() {
   return webhookSchema.parse({ RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET || undefined });
 }
+const aiSchema = z.object({
+  AI_API_KEY: z.string().min(1).optional(),
+  AI_BASE_URL: z.string().url().optional(),
+  AI_MODEL: z.string().min(1).max(100).optional(),
+  AI_INSTANCE_DAILY_CALL_CAP: z.coerce.number().int().min(1).max(100000).default(100),
+});
+// Optional instance AI key and defaults; every value may be unset.
+export function aiEnv() {
+  const blank = (v: string | undefined) => (v === "" ? undefined : v);
+  const raw = Object.fromEntries(Object.keys(aiSchema.shape).map((k) => [k, blank(process.env[k])]));
+  return aiSchema.parse(raw);
+}

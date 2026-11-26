@@ -21,6 +21,7 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Campaign analytics by step, by variant and by mailbox: sent, opened, clicked, replied and bounced.
 - A pre-launch review of senders, blank merge fields and unsubscribed or suppressed enrollments.
 - Test sends of a saved step or variant to your own address.
+- Bring-your-own-key AI settings per workspace (off by default): an OpenAI-compatible provider, a sealed workspace key or an optional instance key, and a daily call limit.
 Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, AI, enrichment, CRM sync. This release builds roadmap Phase 2 part 1 (A/B variants, per-step and per-mailbox analytics, pre-launch review, test send); Phase 5 part 1 is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
@@ -72,6 +73,10 @@ Also listed with comments in `.env.example`.
 | `WARMUP_BATCH_SIZE` | no | Warmup jobs run per tick, default 10, max 50 |
 | `SYNC_BATCH_SIZE` | no | Mailboxes read per sync tick, default 5, max 50 |
 | `SYNC_MESSAGES_PER_MAILBOX` | no | Messages read per mailbox per tick, default 50, max 200 |
+| `AI_API_KEY` | no | Instance AI key, used by every workspace that has AI on and no key of its own. Leave it unset on a shared or public instance |
+| `AI_BASE_URL` | no | OpenAI-compatible base URL for the instance key, default `https://api.openai.com/v1`. Trusted and not checked, so a local Ollama (`http://localhost:11434/v1`) works |
+| `AI_MODEL` | no | Default model, `gpt-4o-mini` when unset. A workspace with its own key can pick another |
+| `AI_INSTANCE_DAILY_CALL_CAP` | no | AI calls per UTC day made with the instance key, across all workspaces, default 100 |
 
 No secret is committed. Real values live only in Vercel and in your local `.env.local`.
 
@@ -144,6 +149,16 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **It does not block launch.** Launch still checks only for an email step and a sender. When its turn comes, an enrollment with a blank merge field fails and an unsubscribed or suppressed one is skipped, as before.
 - **Test sends.** Each email step has Send test. It renders the step or chosen variant against the same sample contact as the preview and sends it from the mailbox you pick, only to your own sign-in address, with the subject starting `[Test]`.
 - **What a test is not.** A test has no open or click tracking, is not stored as a campaign message and does not count in the results. Its unsubscribe links point at a placeholder that changes nothing. Tests are not counted in `INSTANCE_DAILY_SEND_CAP`, but tests from a Resend sender do count toward Resend's own daily quota. Two identical clicks within the same minute send once through Resend; changing the mailbox, subject or body sends again.
+## AI (bring your own key)
+- **Off by default.** A workspace has AI off until an owner or admin turns it on in Settings, AI (`/app/settings/ai`). Members see the status, the key source and today's call count, but cannot change them.
+- **One adapter.** Demail calls `POST <base URL>/chat/completions` in the OpenAI format, so OpenAI, OpenRouter, Groq, Ollama or any other OpenAI-compatible provider works. There is no extra npm dependency.
+- **Which key is used.** A workspace key, when one is stored, with the workspace base URL (default `https://api.openai.com/v1`) and model (default `AI_MODEL`, then `gpt-4o-mini`). Otherwise the instance key `AI_API_KEY` with `AI_BASE_URL` and `AI_MODEL`; the workspace base URL and model are then ignored, so the operator decides where the instance key goes. With neither, AI is unavailable.
+- **Workspace keys.** A pasted key is sealed with AES-256-GCM under a key derived from `MAILBOX_ENCRYPTION_KEY` (HKDF, separate from mailbox tokens) and stored in a table only the service role can read. Storing one needs `MAILBOX_ENCRYPTION_KEY`. Rotation follows Rotating the mailbox encryption key below; if that key is lost, paste the AI key again. Only the last four characters are ever shown, and keys never appear in logs, errors or pages.
+- **The instance key.** `AI_API_KEY` is shared by every workspace on the instance that turns AI on, bounded by `AI_INSTANCE_DAILY_CALL_CAP` calls per UTC day. Leave it unset on a public instance and let each workspace bring its own key.
+- **Daily limits.** Each workspace has a daily call limit (default 100, 1 to 5000) per UTC day across both keys. A call is reserved before the request is sent, so failed calls count too. Your provider may charge for every call.
+- **Base URL rules.** A workspace base URL must be public `https://`, with no user name or password, not `localhost` or a `.local`, `.internal`, `.localhost` or `.lan` host, and must not be or resolve to a loopback, private, link-local, CGNAT, unique-local or multicast address. Redirects are refused and each call times out after 25 seconds. A local model is only reachable through the operator's `AI_BASE_URL`.
+- **What the provider sees.** Whatever a feature sends: your brief when drafting a step, and reply text when drafting a reply or classifying one. Check your provider's data terms before turning AI on.
+- **Nothing is sent by AI.** Anything AI writes is a draft a member reviews. It only goes out when a member clicks send. There is no auto-send.
 ## Deliverability
 Bands and checks are guidance based on your own sending. Nothing here guarantees inbox placement or improves a sender reputation.
 - **Window and rates.** Each mailbox is scored over the last 7 days. Bounce and complaint rates divide by the larger of messages sent and 20, so a new mailbox with a few bounces still trips. `refresh_mailbox_health()` runs every 5 minutes from `schedule.sql`.

@@ -1072,6 +1072,90 @@ export type Database = {
         };
         Relationships: [];
       };
+      ai_settings: {
+        Row: {
+          organization_id: string;
+          enabled: boolean;
+          base_url: string | null;
+          model: string | null;
+          daily_call_limit: number;
+          classify_replies: boolean;
+          classify_enabled_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          enabled?: boolean;
+          base_url?: string | null;
+          model?: string | null;
+          daily_call_limit?: number;
+          classify_replies?: boolean;
+          classify_enabled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          enabled?: boolean;
+          base_url?: string | null;
+          model?: string | null;
+          daily_call_limit?: number;
+          classify_replies?: boolean;
+          classify_enabled_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_credentials: {
+        Row: {
+          organization_id: string;
+          ciphertext: string;
+          key_hint: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          ciphertext: string;
+          key_hint: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          ciphertext?: string;
+          key_hint?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_usage: {
+        Row: {
+          organization_id: string;
+          day: string;
+          source: "workspace" | "instance";
+          calls: number;
+          prompt_tokens: number;
+          completion_tokens: number;
+        };
+        Insert: {
+          organization_id: string;
+          day: string;
+          source: "workspace" | "instance";
+          calls?: number;
+          prompt_tokens?: number;
+          completion_tokens?: number;
+        };
+        Update: {
+          organization_id?: string;
+          day?: string;
+          source?: "workspace" | "instance";
+          calls?: number;
+          prompt_tokens?: number;
+          completion_tokens?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1134,6 +1218,14 @@ export type Database = {
         Returns: boolean;
       };
       is_org_member: { Args: { org: string }; Returns: boolean };
+      reserve_ai_call: {
+        Args: { p_org: string; p_source: "workspace" | "instance"; p_instance_limit: number };
+        Returns: boolean;
+      };
+      record_ai_tokens: {
+        Args: { p_org: string; p_source: "workspace" | "instance"; p_prompt: number; p_completion: number };
+        Returns: undefined;
+      };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

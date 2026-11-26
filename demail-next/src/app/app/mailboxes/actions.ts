@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
+import { publicEnv } from "@/lib/env";
+import { cleanText, isSafeName } from "@/lib/input";
 import { EMAIL_PATTERN } from "@/lib/csv";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readRefreshToken } from "@/lib/mail/credentials";
@@ -110,4 +112,32 @@ export async function setWarmupFilterTag(id: string, enabled: boolean) {
   const tag = m.warmup_filter_tag ?? (enabled ? newFilterTag() : null);
   await supabase.from("mailboxes").update({ warmup_filter_tag_enabled: enabled, warmup_filter_tag: tag }).eq("id", id).eq("organization_id", org.id);
   revalidatePath("/app/mailboxes");
+}
+export type ConnectLinkState = { link?: string; error?: string };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const intIn = (min: number, max: number, fallback: number) =>
+  z.preprocess((v) => (v == null || (typeof v === "string" && v.trim() === "") ? fallback : v), z.coerce.number().int().min(min).max(max));
+const linkSchema = z.object({ days: intIn(1, 30, 7), max_uses: intIn(1, 50, 1) });
+// The token is returned once; only its sha256 is stored.
+export async function createConnectLink(_prev: ConnectLinkState, formData: FormData): Promise<ConnectLinkState> {
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!canManage) return { error: "Only owners and admins can create connect links." };
+  const label = cleanText(formData.get("label"), 80);
+  if (label && !isSafeName(label)) return { error: "A label cannot contain links, addresses or markup." };
+  const parsed = linkSchema.safeParse({ days: formData.get("days"), max_uses: formData.get("max_uses") });
+  if (!parsed.success) return { error: "A link is valid for 1 to 30 days and connects 1 to 50 mailboxes." };
+  const { data, error } = await supabase.rpc("create_connect_link", { p_org: org.id, p_label: label, p_days: parsed.data.days, p_max_uses: parsed.data.max_uses });
+  if (error || !data) {
+    return { error: error?.message.includes("too many open") ? "Revoke an open link first. A workspace can have 20 at a time." : "Could not create the connect link." };
+  }
+  revalidatePath("/app/mailboxes");
+  return { link: `${publicEnv().NEXT_PUBLIC_APP_URL}/connect/${data}` };
+}
+export async function revokeConnectLink(id: string) {
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!UUID_RE.test(id) || !canManage) return fail("Only owners and admins can revoke connect links.");
+  const { error } = await supabase.from("mailbox_connect_links").delete().eq("id", id).eq("organization_id", org.id);
+  if (error) return fail("Could not revoke the connect link.");
+  revalidatePath("/app/mailboxes");
+  return notice("The connect link was revoked.");
 }

@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { localDayStart } from "@/lib/send/schedule";
 import { dailyTarget, type Band } from "@/lib/warmup/plan";
-import { addMailbox, deleteMailbox, setMailboxStatus, setWarmup, setWarmupFilterTag, setWarmupWindow } from "./actions";
+import { addMailbox, deleteMailbox, revokeConnectLink, setMailboxStatus, setWarmup, setWarmupFilterTag, setWarmupWindow } from "./actions";
+import { ConnectLinkForm } from "./connect-link-form";
 const BAND_STYLE: Record<string, string> = {
   healthy: "bg-emerald-100 text-emerald-800",
   watch: "bg-amber-100 text-amber-800",
@@ -33,6 +34,16 @@ export default async function MailboxesPage({ searchParams }: { searchParams: Pr
           .limit(2000),
   ]);
   const healthById = new Map((health ?? []).map((h) => [h.mailbox_id, h]));
+  const showLinks = canManage && (providers.google || providers.microsoft);
+  const { data: links } = showLinks
+    ? await supabase
+        .from("mailbox_connect_links")
+        .select("id, label, uses, max_uses, expires_at")
+        .eq("organization_id", org.id)
+        .gt("expires_at", now.toISOString())
+        .order("created_at", { ascending: false })
+    : { data: null };
+  const openLinks = (links ?? []).filter((l) => l.uses < l.max_uses);
   return (
     <div className="flex max-w-4xl flex-col gap-4">
       <PageHeader title="Mailboxes" />
@@ -176,6 +187,45 @@ export default async function MailboxesPage({ searchParams }: { searchParams: Pr
           </tbody>
         </table>
       </Card>
+      {showLinks && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="font-medium">Connect links</h2>
+          <p className="text-sm text-slate-600">
+            A connect link lets someone without an account, such as a client, connect their own Google or Microsoft mailbox into this workspace. Whoever holds the link can connect up to the number of mailboxes you set until it expires, so share it only with that person.
+          </p>
+          <ConnectLinkForm />
+          {openLinks.length > 0 && (
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200 text-left text-xs text-slate-500">
+                <tr>
+                  <th className="py-2">Label</th>
+                  <th className="py-2">Used</th>
+                  <th className="py-2">Expires</th>
+                  <th className="py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {openLinks.map((l) => (
+                  <tr key={l.id} className="border-b border-slate-100 last:border-0">
+                    <td className="py-2">{l.label || <span className="text-slate-500">No label</span>}</td>
+                    <td className="py-2">
+                      {l.uses} of {l.max_uses}
+                    </td>
+                    <td className="py-2 text-slate-500">{new Date(l.expires_at).toLocaleDateString()}</td>
+                    <td className="py-2 text-right">
+                      <form action={revokeConnectLink.bind(null, l.id)}>
+                        <Button type="submit" variant="danger">
+                          Revoke
+                        </Button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      )}
       {canManage && (
         <Card>
           <h2 className="mb-3 font-medium">Add Resend sender (default free path)</h2>

@@ -22,7 +22,9 @@ export async function updateSession(request: NextRequest) {
 
   const { data } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
-  const protectedPath = path === "/app" || path.startsWith("/app/") || path === "/onboarding" || path.startsWith("/onboarding/");
+  // Connect links reach the OAuth callbacks without a session; the route checks the session for member flows.
+  const oauthCallback = path === "/app/mailboxes/connect/google/callback" || path === "/app/mailboxes/connect/microsoft/callback";
+  const protectedPath = !oauthCallback && (path === "/app" || path.startsWith("/app/") || path === "/onboarding" || path.startsWith("/onboarding/"));
   if (!data.user && protectedPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";

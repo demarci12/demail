@@ -28,7 +28,11 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Hosted forms: a form builder, a public page and an iframe embed that add contacts to your workspace, with spam protection and rate limits.
 - Agencies with client workspaces: agency staff open every client workspace with their agency role, from the workspace switcher or an agency overview.
 - White-label for agencies: a brand name, logo, accent color, support and legal links and a Powered by toggle in the dashboard of the agency and its clients and on their hosted forms.
-Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, enrichment, CRMs other than HubSpot, auto-send of AI replies, multi-page forms and submission notifications, website tracking, a custom portal domain with branded sign-in and unsubscribe pages, client connect links, shared send and AI pools for agencies. This release builds roadmap Phase 5 part 2 (hosted forms, agencies with client workspaces, white-label) on top of part 1 (AI with your own key, AI drafts with approval, reply classification, HubSpot sync); Phase 5 part 3 is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Attaching an existing workspace to an agency through an invitation link that the workspace owner accepts.
+- Shared limits for agencies: a monthly send pool and AI pool with per-client caps, and an opt-in shared agency AI key.
+- A branded unsubscribe page for contacts of agency and client workspaces.
+- Client connect links: a client connects their own Google or Microsoft mailbox into a workspace without an account.
+Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, enrichment, CRMs other than HubSpot, auto-send of AI replies, multi-page forms and submission notifications, website tracking, a custom portal domain with a branded sign-in page. This release builds roadmap Phase 5 part 3 (attach with consent, shared send and AI limits, branded unsubscribe page, client connect links) on top of parts 1 and 2 (AI with your own key, AI drafts with approval, reply classification, HubSpot sync, hosted forms, agencies with client workspaces, white-label); Phase 5 part 4 is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 
@@ -120,6 +124,15 @@ Optional. Resend senders keep working without any of this. Set `MAILBOX_ENCRYPTI
 2. Add a Web redirect URI `<NEXT_PUBLIC_APP_URL>/app/mailboxes/connect/microsoft/callback`.
 3. Under Certificates and secrets, create a client secret and copy its value (not the id) into `MICROSOFT_CLIENT_SECRET`. Copy the application id into `MICROSOFT_CLIENT_ID`.
 4. API permissions: delegated `offline_access`, `User.Read`, `Mail.ReadWrite` and `Mail.Send`.
+
+## Client connect links
+- **Who creates them.** Owners and admins of a workspace, agency staff included, create a link in the Connect links card on the Mailboxes page. The card shows when at least one of Google or Microsoft is set up.
+- **Lifetime and uses.** A link is valid for 1 to 30 days (7 by default) and connects 1 to 50 mailboxes (1 by default). A workspace can have at most 20 unexpired links at a time.
+- **Shown once.** The link is shown once when it is created and only a hash of it is stored, so a lost link cannot be shown again; create a new one. The card lists open links with their label, uses and expiry, and Revoke deletes a link at once.
+- **What the client sees.** Opening the link needs no account. The page shows the workspace name, the label, the agency branding when there is one, what connecting allows and a Connect Google or Connect Microsoft button for each configured provider. The page sends no referrer and is not indexed.
+- **No provider change.** The link uses the same redirect URIs as above, so nothing changes in Google Cloud or Microsoft Entra.
+- **Uses.** A use is taken when the provider grants access, just before the mailbox is stored. Reconnecting an address that is already in the workspace counts as a use.
+- **Afterwards.** The mailbox appears on the Mailboxes page like any other connected mailbox, recorded as connected by the member who created the link, with the provider's display name as its sender name when that name passes the name check.
 
 ## How sending works
 
@@ -259,6 +272,9 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 - **Sender model.** One Resend key per instance. A mailbox row is a sender identity, not a credential store.
 - **Forms spam protection.** Every hosted form has a honeypot and a signed fill-time token, optional Cloudflare Turnstile that fails closed, and per-address and daily limits enforced in `submit_form`, which takes the workspace from the form row and stores no IP address. Turnstile needs no new dependency and stays off until both keys are set.
 - **Agency access.** Agency staff reach a client through the same `is_org_member` and `has_org_role` checks every policy already uses, with their agency role. A workspace joins an agency only when the agency creates it or its owner accepts an invitation through `accept_agency_attach`, and branding is read through `workspace_branding`, which answers only to those who can open the workspace.
+- **Attach consent.** An existing workspace joins an agency only through `accept_agency_attach`, called by a direct owner of that workspace with a single-use invitation token. The organizations trigger allows the change only while that function marks the workspace, so no other path can attach one.
+- **Shared limits.** Pools and caps are counted per UTC calendar month from `messages` and `ai_usage`, with caps keyed by the client and its current agency. Sharing the agency AI key is off by default because the agency's provider bills those calls; calls with it are recorded with source `agency`.
+- **Connect links.** A link holder has no session, so the two OAuth callback paths are not forced through sign-in; the callback checks the session and role for member flows and the link from the sealed cookie for link flows. `consume_connect_link` takes one use atomically before the mailbox is stored, and the lookup and consume functions run only with the service role.
 - **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. Agency staff reach client rows through `is_org_member` and `has_org_role`, which also accept a member of the client's agency, so no policy names agencies itself. Members can only rename a workspace; agency fields change only through security definer functions. The service role key is used only in `src/lib/supabase/admin.ts`.
 
 ## Rotating the mailbox encryption key

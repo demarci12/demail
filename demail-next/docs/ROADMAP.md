@@ -22,7 +22,7 @@ Shipped:
 Still open:
 - SMTP/IMAP mailboxes, which need a long-lived connection that Vercel and Supabase Edge Functions cannot hold, so they would need an optional external poller.
 - Provider push (Gmail Pub/Sub, Graph change notifications) as an accelerator over polling.
-Next: Phase 5 part 3.
+Next: Phase 5 part 4.
 
 ## Phase 4: deliverability
 Part 1 shipped:
@@ -36,7 +36,7 @@ Still open:
 - Gmail rescue from spam, which needs the `gmail.modify` scope.
 - A public warmup pool across instances.
 - An AI content bank next to the hand-written library.
-Next: Phase 5 part 3.
+Next: Phase 5 part 4.
 ## Phase 5: data, AI and channels
 
 - AI writing, reply drafts and classification (bring your own key).
@@ -89,6 +89,24 @@ Part 3 plan:
 - Client connect links, so clients connect mailboxes without an account.
 - A shared monthly send pool and a shared AI balance with per-client caps.
 - Attaching an existing workspace to an agency, with that workspace owner's consent.
+Part 3 shipped:
+- Attaching an existing workspace to an agency with its owner's consent.
+- A shared monthly send pool and a shared AI balance with per-client caps.
+- A branded unsubscribe page.
+- Client connect links, so clients connect Google or Microsoft mailboxes without an account.
+Part 3 decisions:
+- **Scope split.** Part 3 ships the four items that finish the agency story, because they share one access model (`is_org_member`/`has_org_role`, `organizations.agency_id`, `getPublicBranding`); the remaining items move to Part 4 plan.
+- **Attach consent.** An agency owner or admin creates an invitation link (single use, valid 7 days, at most 20 open per agency, only its sha256 stored). A signed-in direct owner of a workspace that is neither an agency nor a client opens `/agency-invite/<token>`, picks the workspace and accepts. `accept_agency_attach` is the only path: `guard_agency_fields` allows `agency_id` to go from null to an agency only while the transaction-local setting `demail.attach_org` equals that workspace id, which only that function sets. Moving from one agency to another is still refused; leaving still uses `detach_client_workspace`.
+- **Send pool.** Per UTC calendar month. The agency pool counts campaign mail (`messages.status = 'sent'`) of the agency and its current client workspaces; a per-client cap counts that client's campaign mail. Unset means no limit, which is the default. The send tick reads the state once per workspace per tick (`send_pool_state`) and counts down in memory; a held enrollment is deferred 60 minutes. Two overlapping ticks can overshoot by at most one batch. Warmup, unibox replies and test sends are neither counted nor held.
+- **AI balance.** An agency may share its own AI key with its clients (`agency_pools.share_ai_key`, off by default because the agency's provider bills those calls). Calls with it are recorded with `ai_usage.source = 'agency'` on the client. The agency monthly AI pool counts the agency's own workspace-key calls plus its clients' agency-key calls; a per-client monthly AI cap counts that client's agency-key calls. A client's own key and the instance key are not counted against the agency. A client still needs AI turned on and its daily limit still applies; the shared key needs the agency's AI turned on and a stored agency key. Key order in `resolveAi`: workspace key, agency key, instance key. Advisory lock order in `reserve_ai_call`: workspace, agency, instance.
+- **Caps keyed by agency.** `agency_client_caps` has primary key `(organization_id, agency_id)`, so caps left behind by a former agency never block or apply under a new one.
+- **Branded unsubscribe.** For a contact in an agency or client workspace the unsubscribe page shows the agency logo, its privacy and terms links and the accent color on the button, and the tab title and icon follow the brand. No Powered by line is added and the wording is unchanged. An invalid link shows no branding.
+- **Connect links.** Owners and admins (agency staff included, through `has_org_role`) create a link with a label, a lifetime of 1 to 30 days (default 7) and 1 to 50 mailboxes (default 1); at most 20 unexpired links per workspace. The token (64 hex) is shown once, only its sha256 is stored, and revoking deletes the row. `/connect/<token>` shows the cleaned workspace name, the label and the agency branding, with Connect Google and Connect Microsoft for configured providers. OAuth reuses the registered redirect URIs `/app/mailboxes/connect/<provider>/callback`; the middleware no longer forces sign-in on those two callback paths, and the sealed OAuth cookie carries the link id and token. A use is consumed atomically (`consume_connect_link`) before the mailbox is stored, reconnecting an address already in the workspace counts as a use, the mailbox's `created_by` is the link creator, and the provider display name is cleaned with `displayName` (falling back to empty). The page sends no referrer.
+- **Rollout window.** All schema changes are additive except the redefined `guard_agency_fields` and `reserve_ai_call` (same signatures) and the widened `ai_usage` source check; one new partial index on `messages` (a short write lock while it builds). The previous release works on the new schema: it never sets `demail.attach_org`, never writes source `agency`, and ignores the new tables. After a rollback attached workspaces stay attached, pools and caps are not enforced, clients stop using the agency key, and connect links stop working until the upgrade returns. No data is lost.
+Part 4 plan:
+- Multi-page forms, more themes, focus mode, a redirect after submit, file fields, submission notifications and double opt-in.
+- Website tracking snippet, consent modes, visitor to contact matching and the "visited site" condition (that condition also needs branching steps, still open in Phase 2).
+- A custom portal domain and a branded sign-in page, which need per-host Supabase Auth redirect URLs and Vercel domain setup.
 Still open:
 - Optional per-workspace auto-send of AI replies, off by default.
 - Acting on a reply intent (stop, suppress, follow up) and a manual intent override.

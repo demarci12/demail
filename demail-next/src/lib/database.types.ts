@@ -1643,6 +1643,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      mailbox_connect_links: {
+        Row: {
+          id: string;
+          organization_id: string;
+          token_hash: string;
+          label: string;
+          created_by: string | null;
+          expires_at: string;
+          max_uses: number;
+          uses: number;
+          last_used_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          token_hash: string;
+          label?: string;
+          created_by?: string | null;
+          expires_at: string;
+          max_uses?: number;
+          uses?: number;
+          last_used_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          token_hash?: string;
+          label?: string;
+          created_by?: string | null;
+          expires_at?: string;
+          max_uses?: number;
+          uses?: number;
+          last_used_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1776,6 +1815,12 @@ export type Database = {
         Args: { p_agency: string };
         Returns: { organization_id: string; sent_this_month: number; ai_calls_this_month: number }[];
       };
+      create_connect_link: { Args: { p_org: string; p_label: string; p_days: number; p_max_uses: number }; Returns: string };
+      connect_link_lookup: {
+        Args: { p_token: string };
+        Returns: { id: string; organization_id: string; label: string; created_by: string | null; expires_at: string }[];
+      };
+      consume_connect_link: { Args: { p_id: string }; Returns: boolean };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

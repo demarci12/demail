@@ -1,0 +1,38 @@
+import "server-only";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { serverEnv } from "@/lib/env";
+import { ipPrefix } from "@/lib/input";
+const MIN_AGE_MS = 3_000;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+function formKey() {
+  return createHmac("sha256", serverEnv().UNSUBSCRIBE_SECRET).update("demail:forms:v1").digest();
+}
+function hmac(payload: string) {
+  return createHmac("sha256", formKey()).update(payload).digest();
+}
+// Fill-time token: <render time ms>.<base64url hmac of form id and time>.
+export function signFillToken(formId: string, now = Date.now()) {
+  return `${now}.${hmac(`t:${formId}:${now}`).toString("base64url")}`;
+}
+export function verifyFillToken(formId: string, token: string | null, now = Date.now()): boolean {
+  if (!token || token.length > 100) return false;
+  const parts = token.split(".");
+  if (parts.length !== 2 || !/^\d{1,16}$/.test(parts[0])) return false;
+  const issued = Number(parts[0]);
+  const expected = Buffer.from(hmac(`t:${formId}:${parts[0]}`).toString("base64url"));
+  const got = Buffer.from(parts[1]);
+  if (expected.length !== got.length || !timingSafeEqual(expected, got)) return false;
+  const age = now - issued;
+  return age >= MIN_AGE_MS && age <= MAX_AGE_MS;
+}
+// Keyed hash of form, address prefix and UTC day, so no IP address is stored.
+export function rateBucket(formId: string, ip: string | null, now = new Date()) {
+  const day = now.toISOString().slice(0, 10);
+  return hmac(`b:${formId}:${ipPrefix(ip)}:${day}`).toString("hex").slice(0, 32);
+}
+export function clientIp(req: Request): string | null {
+  const real = req.headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const first = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return first || null;
+}

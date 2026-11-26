@@ -25,7 +25,8 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - AI step drafts from a short brief and AI reply drafts in the unibox, sent only when a member clicks send.
 - Opt-in AI reply classification: an intent and a one-line summary on each new reply, shown and filterable in the unibox.
 - HubSpot sync with a private app token: contacts are pulled in (blanks filled, opt-outs honored) and each new reply is added as a note on the HubSpot contact.
-Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, hosted forms, agencies, white-label, enrichment, CRMs other than HubSpot, auto-send of AI replies. This release builds roadmap Phase 5 part 1 (AI with your own key, AI drafts with approval, reply classification, HubSpot sync); Phase 5 part 2 (hosted forms, then agencies and white-label) is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- Hosted forms: a form builder, a public page and an iframe embed that add contacts to your workspace, with spam protection and rate limits.
+Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, agencies, white-label, enrichment, CRMs other than HubSpot, auto-send of AI replies. This release builds roadmap Phase 5 part 1 (AI with your own key, AI drafts with approval, reply classification, HubSpot sync); Phase 5 part 2 (hosted forms, then agencies and white-label) is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 
@@ -44,7 +45,7 @@ Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxe
 3. **Apply the schema.** Either install the Supabase CLI, run `supabase link --project-ref <ref>` and `supabase db push` from `demail-next/`, or paste each file in `supabase/migrations/` into the SQL editor in filename order.
 4. **Configure Auth.** In Authentication, URL configuration, set the site URL to your Vercel URL and add `<your URL>/auth/callback` to the redirect allow list. Keep email confirmation on for a public instance. Switch it off only for a private trial.
 5. **Set up Resend.** Create an account, add and verify your sending domain (DNS records SPF and DKIM), then create an API key. Mailbox addresses in Demail must belong to that verified domain.
-6. **Deploy to Vercel.** Import the repository, set the root directory to `demail-next`, and add the environment variables from the table below. Generate the two secrets with `openssl rand -hex 32`. Deploy.
+6. **Deploy to Vercel.** Import the repository, set the root directory to `demail-next`, and add the environment variables from the table below. Generate the two secrets with `openssl rand -hex 32`. Optionally add `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from a free Cloudflare Turnstile widget to add a captcha to hosted forms. Deploy.
 7. **Start the scheduler.** Open `supabase/setup/schedule.sql`, replace the app URL and the cron secret placeholders (the secret must equal `CRON_SECRET` on Vercel), and run it once in the Supabase SQL editor. It stores both in Vault and schedules two jobs every minute: `POST /api/cron/send` and `POST /api/cron/sync`. It also schedules `demail-warmup` (`POST /api/cron/warmup`, every minute), `demail-ai` (`POST /api/cron/ai`, every minute: reply classification, idle unless a workspace turns it on), `demail-crm` (`POST /api/cron/crm`, every 5 minutes: HubSpot sync, idle unless a workspace connects HubSpot), `demail-health` (SQL, every 5 minutes: health bands and warmup planning), `demail-domains` (`POST /api/cron/domains`, hourly) and `demail-purge` (SQL, daily).
 8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
 
@@ -80,6 +81,8 @@ Also listed with comments in `.env.example`.
 | `AI_BASE_URL` | no | OpenAI-compatible base URL for the instance key, default `https://api.openai.com/v1`. Trusted and not checked, so a local Ollama (`http://localhost:11434/v1`) works |
 | `AI_MODEL` | no | Default model, `gpt-4o-mini` when unset. A workspace with its own key can pick another |
 | `AI_INSTANCE_DAILY_CALL_CAP` | no | AI calls per UTC day made with the instance key, across all workspaces, default 100 |
+| `TURNSTILE_SITE_KEY` | no | Cloudflare Turnstile site key for hosted forms. Public, shown in the form page. Turnstile is on only when both keys are set |
+| `TURNSTILE_SECRET_KEY` | no | Cloudflare Turnstile secret key, server only |
 
 No secret is committed. Real values live only in Vercel and in your local `.env.local`.
 
@@ -181,6 +184,15 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Duplicates.** The push position is saved after each note, so a crash between creating a note and saving can add that one note twice.
 - **Same-millisecond limit.** The pull position is HubSpot's last modified time in milliseconds. If more than 500 contacts share one exact millisecond, the sync steps past it and some of them are not read until they change again.
 - **Disconnect.** Disconnect removes the token and every link between Demail and HubSpot contacts. Your Demail contacts and the notes in HubSpot stay. Connecting a token for a different HubSpot account clears the old links and pulls again from the start.
+## Hosted forms
+- **Building.** Members create forms under Forms (`/app/forms`). Each field maps to a contact field (email, first name, last name, company, phone), to a custom field, or only keeps the answer. A form can add a label to every contact it brings in, carries a title, intro, consent text, accent color and a card or plain layout, and goes live when you publish it. Unpublishing closes it at once.
+- **Sharing and embedding.** A published form has a link, `<NEXT_PUBLIC_APP_URL>/f/<slug>`, with a random slug, and an iframe snippet that loads the same page with `?embed=1` (no page padding). Search engines are asked not to index form pages.
+- **What a submission does.** It finds the contact by email in the form's own workspace, or creates it there. Blank fields are filled and existing values are never overwritten, custom fields are merged the same way, an unsubscribed contact is never subscribed again, the form's label is added and the answers are stored as a submission.
+- **Enrollment.** Off by default. When a member picks a campaign, each new submission is enrolled in it if the campaign is not completed and the contact is subscribed and not suppressed. Addresses are not verified, so anyone can enroll an address they do not own and that address receives campaign mail. It counts toward mailbox limits and your Resend quota.
+- **Spam protection.** Every form has a hidden honeypot field (a filled one shows success and writes nothing) and a signed fill-time token that is valid from 3 seconds to 24 hours after the page was shown. Cloudflare Turnstile (free plan) is added when `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are both set; when Cloudflare cannot be reached the submission is refused.
+- **Limits.** Each form accepts 5 submissions per hour per IP address (an IPv6 /64 counts as one address), and refused attempts count too. Each form also has a daily limit, 200 by default. The address comes from `X-Real-IP` or the first `X-Forwarded-For` entry, which Vercel sets; behind a proxy that sets neither, all visitors share one bucket.
+- **Untrusted input.** Names refuse links, web and email addresses and hostnames, company names refuse markup and links, control, bidi and zero-width characters are removed, and lengths are capped. Everything a visitor types is shown as plain text, in the dashboard and in the submissions list.
+- **Data.** No IP address is stored. A rate bucket holds a keyed hash of the form, the address prefix and the day, and buckets older than a day are deleted by the form's next submission. Deleting a contact deletes its submissions.
 ## Deliverability
 Bands and checks are guidance based on your own sending. Nothing here guarantees inbox placement or improves a sender reputation.
 - **Window and rates.** Each mailbox is scored over the last 7 days. Bounce and complaint rates divide by the larger of messages sent and 20, so a new mailbox with a few bounces still trips. `refresh_mailbox_health()` runs every 5 minutes from `schedule.sql`.

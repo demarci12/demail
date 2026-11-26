@@ -76,3 +76,17 @@ export function aiEnv() {
   const raw = Object.fromEntries(Object.keys(aiSchema.shape).map((k) => [k, blank(process.env[k])]));
   return aiSchema.parse(raw);
 }
+const formsSchema = z.object({
+  TURNSTILE_SITE_KEY: z.string().min(1).max(200).optional(),
+  TURNSTILE_SECRET_KEY: z.string().min(1).max(200).optional(),
+});
+// Optional Cloudflare Turnstile keys for hosted forms; both unset means Turnstile is off.
+export function formsEnv() {
+  const blank = (v: string | undefined) => (v === "" ? undefined : v);
+  const raw = Object.fromEntries(Object.keys(formsSchema.shape).map((k) => [k, blank(process.env[k])]));
+  return formsSchema.parse(raw);
+}
+export function turnstileEnabled() {
+  const e = formsEnv();
+  return !!e.TURNSTILE_SITE_KEY && !!e.TURNSTILE_SECRET_KEY;
+}

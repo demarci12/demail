@@ -1364,6 +1364,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      org_branding: {
+        Row: {
+          organization_id: string;
+          brand_name: string;
+          logo_url: string | null;
+          support_url: string | null;
+          privacy_url: string | null;
+          terms_url: string | null;
+          accent_color: string;
+          hide_powered_by: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          brand_name: string;
+          logo_url?: string | null;
+          support_url?: string | null;
+          privacy_url?: string | null;
+          terms_url?: string | null;
+          accent_color?: string;
+          hide_powered_by?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          brand_name?: string;
+          logo_url?: string | null;
+          support_url?: string | null;
+          privacy_url?: string | null;
+          terms_url?: string | null;
+          accent_color?: string;
+          hide_powered_by?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       crm_push_skips: {
         Row: {
           organization_id: string;
@@ -1624,6 +1663,7 @@ export type Database = {
         }[];
       };
       workspace_agency: { Args: { p_org: string }; Returns: { agency_id: string; agency_name: string }[] };
+      workspace_branding: { Args: { p_org: string }; Returns: Database["public"]["Tables"]["org_branding"]["Row"][] };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Alert, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
+import { getPublicBranding } from "@/lib/branding";
 import { formsEnv, turnstileEnabled } from "@/lib/env";
 import { signFillToken } from "@/lib/forms/token";
 import { parseFields, type FormField } from "@/lib/input";
@@ -28,7 +29,7 @@ async function loadForm(slug: string) {
   if (!SLUG_RE.test(slug)) return null;
   const { data } = await createAdminClient()
     .from("forms")
-    .select("id, title, intro, submit_label, success_message, consent_text, fields, accent_color, layout")
+    .select("id, organization_id, title, intro, submit_label, success_message, consent_text, fields, accent_color, layout")
     .eq("slug", slug)
     .eq("published", true)
     .maybeSingle();
@@ -99,6 +100,13 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   const fields = parseFields(form.fields);
   const accent = HEX_RE.test(form.accent_color) ? form.accent_color : "#0284c7";
   const captcha = turnstileEnabled();
+  const brand = await getPublicBranding(form.organization_id);
+  const legal = brand
+    ? [
+        { href: brand.privacy_url, label: "Privacy" },
+        { href: brand.terms_url, label: "Terms" },
+      ].filter((l): l is { href: string; label: string } => !!l.href)
+    : [];
   const siteKey = formsEnv().TURNSTILE_SITE_KEY;
   let body: ReactNode;
   if (done === "1") {
@@ -132,6 +140,10 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   }
   const content = (
     <div className="flex w-full flex-col gap-4">
+      {brand?.logo_url ? (
+        // eslint-disable-next-line @next/next/no-img-element -- the logo is an arbitrary https host, not an optimizable local asset
+        <img src={brand.logo_url} alt="" referrerPolicy="no-referrer" className="h-8 w-auto self-start" />
+      ) : null}
       {form.title ? <h1 className="text-xl font-semibold">{form.title}</h1> : null}
       {form.intro && done !== "1" ? <p className="whitespace-pre-line text-sm text-slate-600">{form.intro}</p> : null}
       {body}
@@ -141,7 +153,16 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   return (
     <main className={main}>
       {form.layout === "plain" ? content : <Card className="w-full">{content}</Card>}
-      <p className="mt-3 text-center text-xs text-slate-400">Powered by Demail</p>
+      {legal.length > 0 || !brand?.hide_powered_by ? (
+        <div className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-center text-xs text-slate-400">
+          {legal.map((l) => (
+            <a key={l.label} href={l.href} target="_blank" rel="noopener noreferrer" className="hover:text-slate-600 hover:underline">
+              {l.label}
+            </a>
+          ))}
+          {!brand?.hide_powered_by ? <span>Powered by Demail</span> : null}
+        </div>
+      ) : null}
       {captcha && done !== "1" ? <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" /> : null}
     </main>
   );

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,17 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
               </tbody>
             </table>
           )}
+        </Card>
+        <Card className="flex flex-col gap-2 text-sm">
+          <h2 className="font-medium">White-label</h2>
+          <p className="text-slate-600">
+            Show your brand name, logo, accent color and links instead of Demail in this workspace, every client workspace and their hosted forms.
+          </p>
+          <p>
+            <Link href="/app/settings/branding" className="text-sky-700 underline">
+              Open branding
+            </Link>
+          </p>
         </Card>
         {canManage && (
           <Card className="flex flex-col gap-3">

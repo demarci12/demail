@@ -27,7 +27,8 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - HubSpot sync with a private app token: contacts are pulled in (blanks filled, opt-outs honored) and each new reply is added as a note on the HubSpot contact.
 - Hosted forms: a form builder, a public page and an iframe embed that add contacts to your workspace, with spam protection and rate limits.
 - Agencies with client workspaces: agency staff open every client workspace with their agency role, from the workspace switcher or an agency overview.
-Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, white-label, enrichment, CRMs other than HubSpot, auto-send of AI replies. This release builds roadmap Phase 5 part 1 (AI with your own key, AI drafts with approval, reply classification, HubSpot sync); Phase 5 part 2 (hosted forms, then agencies and white-label) is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
+- White-label for agencies: a brand name, logo, accent color, support and legal links and a Powered by toggle in the dashboard of the agency and its clients and on their hosted forms.
+Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxes, enrichment, CRMs other than HubSpot, auto-send of AI replies, multi-page forms and submission notifications, website tracking, a custom portal domain with branded sign-in and unsubscribe pages, client connect links, shared send and AI pools for agencies. This release builds roadmap Phase 5 part 2 (hosted forms, agencies with client workspaces, white-label) on top of part 1 (AI with your own key, AI drafts with approval, reply classification, HubSpot sync); Phase 5 part 3 is next. See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Free-tier stack and limits
 
@@ -201,6 +202,11 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Viewing a client's workspace.** The workspace switcher lists your own workspaces first, then the clients of each agency you belong to. Picking a client, or pressing Open on the agency page, shows that workspace as its team sees it. The agency page also lists contacts, active campaigns, mail sent in the last 7 days and unread threads per client.
 - **Client owners and leaving.** A client can have its own members, invited from its Members page, which notes that agency staff can open it too. An owner of the client workspace can leave the agency from its Agency page, and an agency owner can release a client. Both need the client to have at least one owner of its own, so no workspace is left without an owner. Afterwards agency staff no longer reach it and its own members keep everything.
 - **Rollback.** Going back to the previous release keeps agency staff's database access to client rows, but its switcher lists only direct memberships until you upgrade again. No data is lost.
+## White-label
+- **Who sets it.** Owners and admins of an agency workspace open Branding (`/app/settings/branding`, linked from the agency page). Other members see the settings read-only. Client workspaces use their agency's branding and cannot set their own.
+- **What it changes.** In the dashboard of the agency and of every client workspace: the sidebar name and logo instead of Demail, a 3 pixel accent border on the sidebar header, the browser tab title and icon, the support, privacy and terms links at the bottom of the sidebar, and the Powered by Demail line, which you can hide. Hosted forms of these workspaces show the logo above the form, the privacy and terms links below it and the Powered by line unless hidden; each form keeps its own accent color.
+- **Logo.** The logo is an https address, not an upload. Every viewer's browser loads it from that host (with no referrer), so pick a host you trust that stays online. Links must be full https addresses, and the brand name passes the same check as other names.
+- **Not changed yet.** The sign-in page, the unsubscribe page, a custom domain and sender names stay as they are. These are planned for Phase 5 part 3.
 ## Deliverability
 Bands and checks are guidance based on your own sending. Nothing here guarantees inbox placement or improves a sender reputation.
 - **Window and rates.** Each mailbox is scored over the last 7 days. Bounce and complaint rates divide by the larger of messages sent and 20, so a new mailbox with a few bounces still trips. `refresh_mailbox_health()` runs every 5 minutes from `schedule.sql`.
@@ -237,6 +243,8 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 - **Cron split.** Work that needs the app (mail APIs, tokens) is an HTTP job: `demail-send`, `demail-sync`, `demail-warmup` and `demail-ai` every minute, `demail-crm` every 5 minutes and `demail-domains` hourly, each bounded to stay under the 60 second Vercel Hobby limit. Work that is only SQL (`demail-health` every 5 minutes, `demail-purge` daily) runs inside Postgres with no HTTP call. Vercel keeps its two daily fallback crons and no more. An existing install re-runs `supabase/setup/schedule.sql` to add `demail-ai` and `demail-crm`; without them, reply classification and scheduled HubSpot sync stay idle, while AI drafts and Sync now still work.
 - **Realtime.** `threads` and `thread_messages` are in the `supabase_realtime` publication. The unibox subscribes and refreshes the page at most once a second. Row level security decides what each user receives.
 - **Sender model.** One Resend key per instance. A mailbox row is a sender identity, not a credential store.
+- **Forms spam protection.** Every hosted form has a honeypot and a signed fill-time token, optional Cloudflare Turnstile that fails closed, and per-address and daily limits enforced in `submit_form`, which takes the workspace from the form row and stores no IP address. Turnstile needs no new dependency and stays off until both keys are set.
+- **Agency access.** Agency staff reach a client through the same `is_org_member` and `has_org_role` checks every policy already uses, with their agency role. A workspace joins an agency only when the agency creates it, and branding is read through `workspace_branding`, which answers only to those who can open the workspace.
 - **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. Agency staff reach client rows through `is_org_member` and `has_org_role`, which also accept a member of the client's agency, so no policy names agencies itself. Members can only rename a workspace; agency fields change only through security definer functions. The service role key is used only in `src/lib/supabase/admin.ts`.
 
 ## Rotating the mailbox encryption key
@@ -259,6 +267,8 @@ If the key is lost and there is no previous key, stored tokens cannot be opened 
 - Warmup only runs between mailboxes of one workspace on this instance, and Gmail mail found in spam is not moved because that needs the `gmail.modify` scope.
 - Supabase free projects pause after inactivity, which also pauses the scheduler.
 - HubSpot is the only CRM, and sync is one way per data type: contacts come from HubSpot, replies go to HubSpot. Unsubscribes and sent mail are not pushed.
+- Without `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`, hosted forms rely on the honeypot, the fill-time token and the rate limits, which slow automated spam but do not stop a determined sender.
+- After a rollback to the release before agencies, agency staff keep database access to client rows, but the switcher lists only direct memberships and branding is not shown until you upgrade again.
 - Migrations were checked against an in-memory Postgres, not a live Supabase project. The `schedule.sql` extensions run for the first time in your project.
 
 ## License

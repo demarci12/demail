@@ -112,8 +112,30 @@ export async function syncCrmNow() {
     const { data: after } = await admin.from("crm_connections").select("last_error").eq("organization_id", org.id).eq("provider", PROVIDER).maybeSingle();
     return fail(after?.last_error ?? "Sync failed, retrying");
   }
+  const resolved = result.resolved > 0 ? ` ${result.resolved} skipped replies were added on retry.` : "";
   const skipped = result.skipped > 0 ? ` ${result.skipped} replies were skipped because HubSpot refused the contact.` : "";
-  return done(`Synced: ${result.pulled} HubSpot contacts read, ${result.created} created here, ${result.pushed} replies added as notes.${skipped}`);
+  return done(`Synced: ${result.pulled} HubSpot contacts read, ${result.created} created here, ${result.pushed} replies added as notes.${resolved}${skipped}`);
+}
+export async function retrySkippedReplies() {
+  const { org } = await manager();
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("crm_push_skips")
+    .update({ retry_requested: true })
+    .eq("organization_id", org.id)
+    .eq("provider", PROVIDER)
+    .select("message_id");
+  if (error) return fail("Could not mark the skipped replies for a retry.");
+  if (!data || data.length === 0) return fail("Nothing to retry.");
+  const { error: connError } = await admin.from("crm_connections").update({ next_sync_at: new Date().toISOString() }).eq("organization_id", org.id).eq("provider", PROVIDER);
+  if (connError) return fail("Could not schedule the retry.");
+  return done("Skipped replies will be retried with the next sync, within 5 minutes.");
+}
+export async function dismissSkippedReplies() {
+  const { org } = await manager();
+  const { error } = await createAdminClient().from("crm_push_skips").delete().eq("organization_id", org.id).eq("provider", PROVIDER);
+  if (error) return fail("Could not dismiss the skipped replies.");
+  return done("Skipped replies dismissed. They stay out of HubSpot.");
 }
 export async function disconnectCrm() {
   const { org } = await manager();

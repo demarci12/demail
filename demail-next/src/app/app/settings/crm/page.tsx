@@ -3,17 +3,31 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { connectHubSpot, disconnectCrm, saveCrmOptions, syncCrmNow } from "./actions";
+import Link from "next/link";
+import { connectHubSpot, disconnectCrm, dismissSkippedReplies, retrySkippedReplies, saveCrmOptions, syncCrmNow } from "./actions";
 const when = (at: string | null) => (at ? `${new Date(at).toISOString().replace("T", " ").slice(0, 16)} UTC` : "Never");
 export default async function CrmSettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; msg?: string }> }) {
   const { error, msg } = await searchParams;
   const { supabase, org, canManage } = await getOrgContext();
-  const [{ data: conn }, { data: labels }, { count: linked }, { data: cred }] = await Promise.all([
+  const [{ data: conn }, { data: labels }, { count: linked }, { data: cred }, { count: skipCount }, { data: skips }] = await Promise.all([
     supabase.from("crm_connections").select("*").eq("organization_id", org.id).eq("provider", "hubspot").maybeSingle(),
     supabase.from("labels").select("id, name").eq("organization_id", org.id).order("name"),
     supabase.from("crm_contact_links").select("contact_id", { count: "exact", head: true }).eq("organization_id", org.id).eq("provider", "hubspot"),
     createAdminClient().from("crm_credentials").select("key_hint").eq("organization_id", org.id).eq("provider", "hubspot").maybeSingle(),
+    supabase.from("crm_push_skips").select("message_id", { count: "exact", head: true }).eq("organization_id", org.id).eq("provider", "hubspot"),
+    supabase
+      .from("crm_push_skips")
+      .select("message_id, skipped_at, attempts")
+      .eq("organization_id", org.id)
+      .eq("provider", "hubspot")
+      .order("skipped_at", { ascending: false })
+      .limit(20),
   ]);
+  const skipIds = (skips ?? []).map((s) => s.message_id);
+  const { data: skipMessages } = skipIds.length
+    ? await supabase.from("thread_messages").select("id, thread_id, from_email, subject").eq("organization_id", org.id).in("id", skipIds)
+    : { data: [] as { id: string; thread_id: string; from_email: string | null; subject: string | null }[] };
+  const messageById = new Map((skipMessages ?? []).map((m) => [m.id, m]));
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader title="CRM" />
@@ -54,6 +68,50 @@ export default async function CrmSettingsPage({ searchParams }: { searchParams: 
           </form>
         )}
       </Card>
+      {(skipCount ?? 0) > 0 && (
+        <Card className="flex flex-col gap-3 text-sm">
+          <h2 className="font-medium">Replies not added to HubSpot</h2>
+          <p className="text-slate-600">
+            HubSpot refused {skipCount} {skipCount === 1 ? "reply" : "replies"}, usually because the contact was deleted there or the address is invalid. They stay
+            listed until a retry adds them or an owner or admin dismisses them.
+          </p>
+          <ul className="flex flex-col divide-y divide-slate-200">
+            {(skips ?? []).map((s) => {
+              const m = messageById.get(s.message_id);
+              return (
+                <li key={s.message_id} className="flex flex-wrap items-baseline gap-x-3 py-2">
+                  <span className="text-slate-500">{when(s.skipped_at)}</span>
+                  <span>{m?.from_email ?? "Unknown sender"}</span>
+                  {m ? (
+                    <Link href={`/app/unibox/${m.thread_id}`} className="text-sky-700 hover:underline">
+                      {m.subject || "(no subject)"}
+                    </Link>
+                  ) : (
+                    <span>(message unavailable)</span>
+                  )}
+                  <span className="text-slate-500">
+                    {s.attempts} {s.attempts === 1 ? "attempt" : "attempts"}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          {canManage && (
+            <div className="flex gap-2">
+              <form action={retrySkippedReplies}>
+                <Button type="submit" variant="secondary">
+                  Retry
+                </Button>
+              </form>
+              <form action={dismissSkippedReplies}>
+                <Button type="submit" variant="danger">
+                  Dismiss
+                </Button>
+              </form>
+            </div>
+          )}
+        </Card>
+      )}
       {canManage && (
         <>
           <Card className="flex flex-col gap-3">

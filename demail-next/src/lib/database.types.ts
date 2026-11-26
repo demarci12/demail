@@ -1358,6 +1358,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      crm_push_skips: {
+        Row: {
+          organization_id: string;
+          provider: "hubspot";
+          message_id: string;
+          skipped_at: string;
+          attempts: number;
+          retry_requested: boolean;
+        };
+        Insert: {
+          organization_id: string;
+          provider: "hubspot";
+          message_id: string;
+          skipped_at?: string;
+          attempts?: number;
+          retry_requested?: boolean;
+        };
+        Update: {
+          organization_id?: string;
+          provider?: "hubspot";
+          message_id?: string;
+          skipped_at?: string;
+          attempts?: number;
+          retry_requested?: boolean;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {

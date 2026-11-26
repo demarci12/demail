@@ -7,7 +7,7 @@ import { CrmError, createContact, createNote, searchContactsSince } from "./hubs
 import { fillBlanks, mapHubSpotContact, millis, replyNoteBody } from "./map";
 type Admin = SupabaseClient<Database>;
 type Connection = Database["public"]["Tables"]["crm_connections"]["Row"];
-export type CrmTickResult = { claimed: number; pulled: number; created: number; pushed: number; skipped: number; failed: number };
+export type CrmTickResult = { claimed: number; pulled: number; created: number; pushed: number; resolved: number; skipped: number; failed: number };
 const BUDGET_MS = 45_000;
 const MAX_PAGES = 5;
 const PUSH_BATCH = 25;
@@ -104,21 +104,13 @@ async function noteForContact(admin: Admin, org: string, token: string, contact:
   external.set(contact.id, externalId);
   await createNote(token, externalId, note);
 }
-async function push(admin: Admin, conn: Connection, token: string, result: CrmTickResult, deadline: number) {
-  const org = conn.organization_id;
-  const { data: messages, error } = await admin
-    .from("thread_messages")
-    .select("id, thread_id, from_email, subject, body_text, sent_at, created_at")
-    .eq("organization_id", org)
-    .eq("direction", "in")
-    .eq("kind", "reply")
-    .gt("created_at", conn.push_cursor)
-    .order("created_at")
-    .limit(PUSH_BATCH);
-  if (error) throw new Error("Could not read replies");
-  const rows = messages ?? [];
-  let skipped = 0;
-  if (rows.length === 0) return { full: false, skipped };
+type PushMessage = { id: string; thread_id: string; from_email: string | null; subject: string | null; body_text: string | null; sent_at: string; created_at: string };
+type PreparedNote = { contact: PushContact; note: { timestamp: string; body: string } };
+// Builds the HubSpot note for each message whose thread still has a contact; push and retry share it.
+async function prepareNotes(admin: Admin, org: string, rows: PushMessage[]) {
+  const notes = new Map<string, PreparedNote>();
+  const external = new Map<string, string>();
+  if (rows.length === 0) return { notes, external };
   const { data: threads } = await admin.from("threads").select("id, contact_id, campaign_id, subject").eq("organization_id", org).in("id", [...new Set(rows.map((m) => m.thread_id))]);
   const threadById = new Map((threads ?? []).map((t) => [t.id, t]));
   const contactIds = [...new Set((threads ?? []).map((t) => t.contact_id).filter((id): id is string => !!id))];
@@ -136,13 +128,14 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
   ]);
   const contactById = new Map((contacts ?? []).map((c) => [c.id, c]));
   const campaignName = new Map((campaigns ?? []).map((c) => [c.id, c.name]));
-  const external = new Map((links ?? []).map((l) => [l.contact_id, l.external_id]));
+  for (const l of links ?? []) external.set(l.contact_id, l.external_id);
   for (const m of rows) {
-    if (Date.now() >= deadline) return { full: true, skipped };
     const thread = threadById.get(m.thread_id);
     const contact = thread?.contact_id ? contactById.get(thread.contact_id) : undefined;
-    if (thread && contact) {
-      const note = {
+    if (!thread || !contact) continue;
+    notes.set(m.id, {
+      contact,
+      note: {
         timestamp: m.sent_at,
         body: replyNoteBody({
           subject: m.subject ?? thread.subject,
@@ -150,15 +143,45 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
           campaignName: thread.campaign_id ? (campaignName.get(thread.campaign_id) ?? null) : null,
           body: m.body_text,
         }),
-      };
+      },
+    });
+  }
+  return { notes, external };
+}
+const MESSAGE_COLUMNS = "id, thread_id, from_email, subject, body_text, sent_at, created_at";
+async function push(admin: Admin, conn: Connection, token: string, result: CrmTickResult, deadline: number) {
+  const org = conn.organization_id;
+  const { data: messages, error } = await admin
+    .from("thread_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("organization_id", org)
+    .eq("direction", "in")
+    .eq("kind", "reply")
+    .gt("created_at", conn.push_cursor)
+    .order("created_at")
+    .limit(PUSH_BATCH);
+  if (error) throw new Error("Could not read replies");
+  const rows = messages ?? [];
+  if (rows.length === 0) return { full: false };
+  const { notes, external } = await prepareNotes(admin, org, rows);
+  for (const m of rows) {
+    if (Date.now() >= deadline) return { full: true };
+    const prepared = notes.get(m.id);
+    if (prepared) {
       try {
-        await noteForContact(admin, org, token, contact, external, note);
+        await noteForContact(admin, org, token, prepared.contact, external, prepared.note);
         result.pushed++;
       } catch (e) {
-        // Auth, scope, rate and network errors still fail the tick; a rejected record is skipped.
+        // Auth, scope, rate and network errors still fail the tick; a rejected record is skipped and kept for a retry.
         if (!rejected(e)) throw e;
-        skipped++;
         result.skipped++;
+        const { error: skipError } = await admin
+          .from("crm_push_skips")
+          .upsert(
+            { organization_id: org, provider: PROVIDER, message_id: m.id, skipped_at: new Date().toISOString(), attempts: 1, retry_requested: false },
+            { onConflict: "message_id,provider" },
+          );
+        if (skipError) throw new Error("Could not record skipped reply");
         console.error("crm note skipped", { organization: org, message: m.id });
       }
     }
@@ -166,16 +189,66 @@ async function push(admin: Admin, conn: Connection, token: string, result: CrmTi
     const { error: cursorError } = await admin.from("crm_connections").update({ push_cursor: m.created_at }).eq("organization_id", org).eq("provider", PROVIDER);
     if (cursorError) throw new Error("Could not advance push cursor");
   }
-  return { full: rows.length === PUSH_BATCH, skipped };
+  return { full: rows.length === PUSH_BATCH };
+}
+// Re-pushes skipped replies an owner or admin asked to retry: added ones go away, refused ones wait for the next request.
+async function retrySkipped(admin: Admin, conn: Connection, token: string, result: CrmTickResult, deadline: number) {
+  const org = conn.organization_id;
+  const { data: skips, error } = await admin
+    .from("crm_push_skips")
+    .select("message_id, attempts")
+    .eq("organization_id", org)
+    .eq("provider", PROVIDER)
+    .eq("retry_requested", true)
+    .order("skipped_at")
+    .limit(PUSH_BATCH);
+  if (error) throw new Error("Could not read skipped replies");
+  if (!skips || skips.length === 0) return;
+  const { data: messages, error: messageError } = await admin
+    .from("thread_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("organization_id", org)
+    .in("id", skips.map((s) => s.message_id));
+  if (messageError) throw new Error("Could not read skipped replies");
+  const { notes, external } = await prepareNotes(admin, org, messages ?? []);
+  const forget = async (messageId: string) => {
+    const { error: deleteError } = await admin.from("crm_push_skips").delete().eq("organization_id", org).eq("provider", PROVIDER).eq("message_id", messageId);
+    if (deleteError) throw new Error("Could not clear skipped reply");
+  };
+  for (const s of skips) {
+    if (Date.now() >= deadline) return;
+    const prepared = notes.get(s.message_id);
+    // The message, its thread or its contact is gone, so there is nothing to push.
+    if (!prepared) {
+      await forget(s.message_id);
+      continue;
+    }
+    try {
+      await noteForContact(admin, org, token, prepared.contact, external, prepared.note);
+    } catch (e) {
+      if (!rejected(e)) throw e;
+      const { error: updateError } = await admin
+        .from("crm_push_skips")
+        .update({ attempts: s.attempts + 1, retry_requested: false, skipped_at: new Date().toISOString() })
+        .eq("organization_id", org)
+        .eq("provider", PROVIDER)
+        .eq("message_id", s.message_id);
+      if (updateError) throw new Error("Could not record skipped reply");
+      result.skipped++;
+      continue;
+    }
+    await forget(s.message_id);
+    result.pushed++;
+    result.resolved++;
+  }
 }
 // Wait after the nth consecutive failure: 2, 4, 8 ... minutes, at most an hour.
 export const crmBackoffMs = (n: number) => Math.min(60, 2 ** n) * 60_000;
-export const SKIPPED_REPLIES_ERROR = "HubSpot refused some replies (a deleted or invalid contact), so they were skipped.";
 // One CRM tick: claims due HubSpot connections, pulls changed contacts and pushes new replies as notes.
 export async function runCrmTick(opts: { organizationId?: string } = {}): Promise<CrmTickResult> {
   const admin = createAdminClient();
   const deadline = Date.now() + BUDGET_MS;
-  const result: CrmTickResult = { claimed: 0, pulled: 0, created: 0, pushed: 0, skipped: 0, failed: 0 };
+  const result: CrmTickResult = { claimed: 0, pulled: 0, created: 0, pushed: 0, resolved: 0, skipped: 0, failed: 0 };
   const { data: claimed, error } = await admin.rpc("claim_due_crm_syncs", { batch: 5, p_org: opts.organizationId });
   if (error) throw new Error("claim_due_crm_syncs failed");
   const connections = claimed ?? [];
@@ -200,14 +273,15 @@ export async function runCrmTick(opts: { organizationId?: string } = {}): Promis
           if (cursorError) throw new Error("Could not advance pull cursor");
         }
       }
-      const pushed = conn.push_replies ? await push(admin, conn, token, result, deadline) : { full: false, skipped: 0 };
+      if (conn.push_replies) await retrySkipped(admin, conn, token, result, deadline);
+      const pushed = conn.push_replies ? await push(admin, conn, token, result, deadline) : { full: false };
       const now = Date.now();
       await admin
         .from("crm_connections")
         .update({
           lease_until: null,
           last_synced_at: new Date(now).toISOString(),
-          last_error: pushed.skipped > 0 ? SKIPPED_REPLIES_ERROR : null,
+          last_error: null,
           consecutive_errors: 0,
           next_sync_at: new Date(now + (morePending || pushed.full ? 1 : 15) * 60_000).toISOString(),
         })

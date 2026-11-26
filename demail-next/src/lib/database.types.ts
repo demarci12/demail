@@ -1143,7 +1143,7 @@ export type Database = {
         Row: {
           organization_id: string;
           day: string;
-          source: "workspace" | "instance";
+          source: "workspace" | "instance" | "agency";
           calls: number;
           prompt_tokens: number;
           completion_tokens: number;
@@ -1151,7 +1151,7 @@ export type Database = {
         Insert: {
           organization_id: string;
           day: string;
-          source: "workspace" | "instance";
+          source: "workspace" | "instance" | "agency";
           calls?: number;
           prompt_tokens?: number;
           completion_tokens?: number;
@@ -1159,7 +1159,7 @@ export type Database = {
         Update: {
           organization_id?: string;
           day?: string;
-          source?: "workspace" | "instance";
+          source?: "workspace" | "instance" | "agency";
           calls?: number;
           prompt_tokens?: number;
           completion_tokens?: number;
@@ -1439,6 +1439,60 @@ export type Database = {
         };
         Relationships: [];
       };
+      agency_pools: {
+        Row: {
+          organization_id: string;
+          monthly_send_pool: number | null;
+          monthly_ai_pool: number | null;
+          share_ai_key: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          monthly_send_pool?: number | null;
+          monthly_ai_pool?: number | null;
+          share_ai_key?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          monthly_send_pool?: number | null;
+          monthly_ai_pool?: number | null;
+          share_ai_key?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      agency_client_caps: {
+        Row: {
+          organization_id: string;
+          agency_id: string;
+          monthly_send_cap: number | null;
+          monthly_ai_cap: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          agency_id: string;
+          monthly_send_cap?: number | null;
+          monthly_ai_cap?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          agency_id?: string;
+          monthly_send_cap?: number | null;
+          monthly_ai_cap?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       crm_push_skips: {
         Row: {
           organization_id: string;
@@ -1653,11 +1707,11 @@ export type Database = {
       is_org_member: { Args: { org: string }; Returns: boolean };
       is_display_name: { Args: { p: string }; Returns: boolean };
       reserve_ai_call: {
-        Args: { p_org: string; p_source: "workspace" | "instance"; p_instance_limit: number };
+        Args: { p_org: string; p_source: "workspace" | "instance" | "agency"; p_instance_limit: number };
         Returns: boolean;
       };
       record_ai_tokens: {
-        Args: { p_org: string; p_source: "workspace" | "instance"; p_prompt: number; p_completion: number };
+        Args: { p_org: string; p_source: "workspace" | "instance" | "agency"; p_prompt: number; p_completion: number };
         Returns: undefined;
       };
       claim_reply_classifications: {
@@ -1704,6 +1758,24 @@ export type Database = {
       create_agency_attach_invite: { Args: { p_agency: string }; Returns: string };
       agency_attach_preview: { Args: { p_token: string }; Returns: { agency_id: string; agency_name: string; expires_at: string }[] };
       accept_agency_attach: { Args: { p_token: string; p_org: string }; Returns: string };
+      send_pool_state: { Args: { p_org: string }; Returns: { agency_id: string; pool_left: number | null; cap_left: number | null }[] };
+      workspace_pool_usage: {
+        Args: { p_org: string };
+        Returns: {
+          agency_id: string;
+          monthly_send_cap: number | null;
+          sent_this_month: number;
+          send_pool_reached: boolean;
+          monthly_ai_cap: number | null;
+          ai_calls_this_month: number;
+          ai_pool_reached: boolean;
+          agency_key_available: boolean;
+        }[];
+      };
+      agency_pool_usage: {
+        Args: { p_agency: string };
+        Returns: { organization_id: string; sent_this_month: number; ai_calls_this_month: number }[];
+      };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { getOrgContext, setOrgCookie } from "@/lib/org";
 import { cleanText, isSafeName } from "@/lib/input";
 import { publicEnv } from "@/lib/env";
@@ -77,4 +78,46 @@ export async function revokeAttachInvite(id: string) {
   const { error } = await supabase.from("agency_attach_invites").delete().eq("id", id).eq("organization_id", org.id);
   if (error) return fail("Could not revoke the invitation.");
   return done("The invitation was revoked.");
+}
+// A blank field means no limit.
+const optionalInt = (max: number) =>
+  z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? null : v), z.coerce.number().int().min(1).max(max).nullable());
+const poolsSchema = z.object({
+  monthly_send_pool: optionalInt(10_000_000),
+  monthly_ai_pool: optionalInt(1_000_000),
+  share_ai_key: z.boolean(),
+});
+const capsSchema = z.object({
+  monthly_send_cap: optionalInt(10_000_000),
+  monthly_ai_cap: optionalInt(1_000_000),
+});
+export async function saveAgencyPools(formData: FormData) {
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!org.is_agency || !canManage) return fail("Only owners and admins of an agency can change its shared limits.");
+  const parsed = poolsSchema.safeParse({
+    monthly_send_pool: formData.get("monthly_send_pool") ?? "",
+    monthly_ai_pool: formData.get("monthly_ai_pool") ?? "",
+    share_ai_key: formData.get("share_ai_key") === "on",
+  });
+  if (!parsed.success) return fail("Leave a limit blank for no limit, or enter a whole number: up to 10000000 emails and 1000000 AI calls a month.");
+  const { error } = await supabase.from("agency_pools").upsert({ organization_id: org.id, ...parsed.data }, { onConflict: "organization_id" });
+  if (error) return fail("Could not save the shared limits.");
+  return done("Shared limits saved.");
+}
+export async function saveClientCaps(clientId: string, formData: FormData) {
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!UUID_RE.test(clientId)) return fail("That workspace is not available to you.");
+  if (!org.is_agency || !canManage) return fail("Only owners and admins of an agency can change client limits.");
+  const { data: clients } = await supabase.rpc("agency_clients", { p_agency: org.id });
+  if (!(clients ?? []).some((c) => c.id === clientId)) return fail("That workspace is not a client of this agency.");
+  const parsed = capsSchema.safeParse({
+    monthly_send_cap: formData.get("monthly_send_cap") ?? "",
+    monthly_ai_cap: formData.get("monthly_ai_cap") ?? "",
+  });
+  if (!parsed.success) return fail("Leave a cap blank for no limit, or enter a whole number: up to 10000000 emails and 1000000 AI calls a month.");
+  const { error } = await supabase
+    .from("agency_client_caps")
+    .upsert({ organization_id: clientId, agency_id: org.id, ...parsed.data }, { onConflict: "organization_id,agency_id" });
+  if (error) return fail("Could not save the limits for the client workspace.");
+  return done("Limits saved for the client workspace.");
 }

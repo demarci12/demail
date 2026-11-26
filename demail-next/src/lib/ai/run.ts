@@ -6,8 +6,8 @@ import { aiEnv } from "@/lib/env";
 import { DEFAULT_AI_BASE_URL, DEFAULT_AI_MODEL } from "@/lib/ai/shared";
 import { AiError, chatComplete, type AiConfig, type AiMessage, type AiOptions } from "@/lib/ai/provider";
 type Admin = SupabaseClient<Database>;
-export type ResolvedAi = AiConfig & { source: "workspace" | "instance" };
-// Workspace key first, then the instance key; the instance key always uses the operator's base URL and model.
+export type ResolvedAi = AiConfig & { source: "workspace" | "instance" | "agency" };
+// Workspace key first, then a key its agency shares, then the instance key; the instance key always uses the operator's base URL and model.
 export async function resolveAi(admin: Admin, orgId: string): Promise<ResolvedAi> {
   const { data: settings, error } = await admin
     .from("ai_settings")
@@ -33,6 +33,32 @@ export async function resolveAi(admin: Admin, orgId: string): Promise<ResolvedAi
       model: settings.model ?? env.AI_MODEL ?? DEFAULT_AI_MODEL,
       checkHost: true,
     };
+  }
+  const { data: org, error: orgError } = await admin.from("organizations").select("agency_id").eq("id", orgId).maybeSingle();
+  if (orgError) throw new AiError("provider");
+  if (org?.agency_id) {
+    const agencyId = org.agency_id;
+    const [{ data: pool, error: poolError }, { data: agencyAi, error: agencyAiError }, { data: agencyCred, error: agencyCredError }] = await Promise.all([
+      admin.from("agency_pools").select("share_ai_key").eq("organization_id", agencyId).maybeSingle(),
+      admin.from("ai_settings").select("enabled, base_url, model").eq("organization_id", agencyId).maybeSingle(),
+      admin.from("ai_credentials").select("ciphertext").eq("organization_id", agencyId).maybeSingle(),
+    ]);
+    if (poolError || agencyAiError || agencyCredError) throw new AiError("provider");
+    if (pool?.share_ai_key && agencyAi?.enabled && agencyCred) {
+      let apiKey: string;
+      try {
+        apiKey = openFor("ai-key", agencyCred.ciphertext);
+      } catch {
+        throw new AiError("no_key", "The agency AI key cannot be opened. The agency must paste it again in Settings, AI.");
+      }
+      return {
+        source: "agency",
+        apiKey,
+        baseUrl: agencyAi.base_url ?? DEFAULT_AI_BASE_URL,
+        model: agencyAi.model ?? env.AI_MODEL ?? DEFAULT_AI_MODEL,
+        checkHost: true,
+      };
+    }
   }
   if (env.AI_API_KEY) {
     return {

@@ -5,7 +5,7 @@ export type AiErrorCode = "off" | "no_key" | "limit" | "auth" | "rate" | "provid
 const MESSAGES: Record<AiErrorCode, string> = {
   off: "AI is off for this workspace. An owner or admin can turn it on in Settings, AI.",
   no_key: "No AI key is set. Add one in Settings, AI.",
-  limit: "The daily AI limit for this workspace is reached.",
+  limit: "An AI limit for this workspace is reached: its daily limit or a monthly limit set by its agency.",
   auth: "The AI provider refused the key.",
   rate: "The AI provider is rate limiting. Try again shortly.",
   provider: "The AI provider did not answer. Try again shortly.",

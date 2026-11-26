@@ -58,8 +58,8 @@ export default async function AgencyInvitePage({
         <h1 className="text-xl font-semibold">Join {agencyName}</h1>
         <p>
           Accepting lets every member of {agencyName} open the workspace you pick with the role they have in the agency, including owners and admins.
-          The agency&apos;s branding applies there. Your members keep their access. An owner can leave the agency at any time from the workspace&apos;s
-          Agency page.
+          The agency&apos;s branding applies there, and so do the agency&apos;s shared monthly send and AI limits. Your members keep their access. An
+          owner can leave the agency at any time from the workspace&apos;s Agency page.
         </p>
         {error && <Alert>{ACCEPT_FAILED}</Alert>}
         {eligible.length === 0 ? (

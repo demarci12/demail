@@ -22,6 +22,7 @@ export type TickResult = { claimed: number; sent: number; waited: number; deferr
 const MAX_ATTEMPTS = 5;
 const RETRY_MS = 5 * 60_000;
 const DEFER_MS = 15 * 60_000;
+const POOL_DEFER_MS = 60 * 60_000;
 function plus(now: Date, ms: number) {
   return new Date(now.getTime() + ms).toISOString();
 }
@@ -53,6 +54,8 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
   const mailboxSent = new Map<string, number>();
   const mailboxLast = new Map<string, number>();
   const campaignSent = new Map<string, number>();
+  const poolState = new Map<string, { agency: string; capLeft: number | null } | null>();
+  const agencyPoolLeft = new Map<string, number | null>();
   // A mailbox with no row counts as healthy.
   const bands = new Map<string, string>();
   {
@@ -101,6 +104,25 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       campaignSent.set(c.id, count ?? 0);
     }
     return campaignSent.get(c.id)!;
+  }
+  // Agency send pool and client cap, read once per workspace per tick; overlapping ticks can overshoot by one batch.
+  async function poolHeld(orgId: string) {
+    if (!poolState.has(orgId)) {
+      const { data, error } = await admin.rpc("send_pool_state", { p_org: orgId });
+      if (error) {
+        console.error("send_pool_state failed", { organization: orgId });
+        return true;
+      }
+      const row = data?.[0];
+      if (row) {
+        if (!agencyPoolLeft.has(row.agency_id)) agencyPoolLeft.set(row.agency_id, row.pool_left);
+        poolState.set(orgId, { agency: row.agency_id, capLeft: row.cap_left });
+      } else poolState.set(orgId, null);
+    }
+    const st = poolState.get(orgId);
+    if (!st) return false;
+    const left = agencyPoolLeft.get(st.agency);
+    return (typeof left === "number" && left <= 0) || (st.capLeft !== null && st.capLeft <= 0);
   }
   const update = (e: Enrollment, patch: Database["public"]["Tables"]["campaign_contacts"]["Update"]) =>
     admin.from("campaign_contacts").update(patch).eq("id", e.id).eq("organization_id", e.organization_id);
@@ -238,6 +260,10 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     }
     if (campaign.daily_limit !== null && (await campaignSentToday(campaign)) >= campaign.daily_limit) {
       await defer(e, plus(now, DEFER_MS));
+      continue;
+    }
+    if (await poolHeld(e.organization_id)) {
+      await defer(e, plus(now, POOL_DEFER_MS));
       continue;
     }
     // Keep the enrollment on its mailbox while it is usable, otherwise pick the least used one.
@@ -380,6 +406,12 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     mailboxSent.set(chosen.id, (mailboxSent.get(chosen.id) ?? 0) + 1);
     mailboxLast.set(chosen.id, Date.now());
     campaignSent.set(campaign.id, (campaignSent.get(campaign.id) ?? 0) + 1);
+    const pool = poolState.get(e.organization_id);
+    if (pool) {
+      const left = agencyPoolLeft.get(pool.agency);
+      if (typeof left === "number") agencyPoolLeft.set(pool.agency, left - 1);
+      if (typeof pool.capLeft === "number") pool.capLeft--;
+    }
     const { error: insertError } = await admin.from("messages").insert({
       id: messageId,
       organization_id: e.organization_id,

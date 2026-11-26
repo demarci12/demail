@@ -10,16 +10,18 @@ export default async function AiSettingsPage({ searchParams }: { searchParams: P
   const { error, msg } = await searchParams;
   const { supabase, org, canManage } = await getOrgContext();
   const today = new Date().toISOString().slice(0, 10);
-  const [{ data: settings }, { data: usage }, { data: cred }] = await Promise.all([
+  const [{ data: settings }, { data: usage }, { data: cred }, { data: poolRows }] = await Promise.all([
     supabase.from("ai_settings").select("*").eq("organization_id", org.id).maybeSingle(),
     supabase.from("ai_usage").select("source, calls").eq("organization_id", org.id).eq("day", today),
     createAdminClient().from("ai_credentials").select("key_hint").eq("organization_id", org.id).maybeSingle(),
+    org.agency_id ? supabase.rpc("workspace_pool_usage", { p_org: org.id }) : Promise.resolve({ data: [] }),
   ]);
+  const agencyKey = !!poolRows?.[0]?.agency_key_available;
   const instanceKey = !!aiEnv().AI_API_KEY;
   const enabled = settings?.enabled ?? false;
   const limit = settings?.daily_call_limit ?? 100;
   const callsToday = (usage ?? []).reduce((n, u) => n + u.calls, 0);
-  const keySource = cred ? `Workspace key ending in ${cred.key_hint}` : instanceKey ? "This instance's shared key" : "No key";
+  const keySource = cred ? `Workspace key ending in ${cred.key_hint}` : agencyKey ? "Your agency's shared key" : instanceKey ? "This instance's shared key" : "No key";
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader title="AI" />

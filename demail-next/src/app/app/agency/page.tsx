@@ -1,11 +1,23 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { displayName } from "@/lib/input";
-import { createClientWorkspace, leaveAgency, openClient, releaseClient, revokeAttachInvite, turnIntoAgency, turnOffAgency } from "./actions";
+import {
+  createClientWorkspace,
+  leaveAgency,
+  openClient,
+  releaseClient,
+  revokeAttachInvite,
+  saveAgencyPools,
+  saveClientCaps,
+  turnIntoAgency,
+  turnOffAgency,
+} from "./actions";
 import { AttachInviteForm } from "./attach-invite-form";
+const usageOf = (used: number, limit: number | null | undefined) => (limit ? `${used} of ${limit}` : `${used}, no limit`);
 export default async function AgencyPage({ searchParams }: { searchParams: Promise<{ error?: string; msg?: string }> }) {
   const { error, msg } = await searchParams;
   const { supabase, org, role, canManage } = await getOrgContext();
@@ -28,6 +40,15 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
           .order("created_at", { ascending: false })
       : { data: [] };
     const openInvites = invites ?? [];
+    const [{ data: pools }, { data: caps }, { data: usage }] = await Promise.all([
+      supabase.from("agency_pools").select("monthly_send_pool, monthly_ai_pool, share_ai_key").eq("organization_id", org.id).maybeSingle(),
+      supabase.from("agency_client_caps").select("organization_id, monthly_send_cap, monthly_ai_cap").eq("agency_id", org.id),
+      supabase.rpc("agency_pool_usage", { p_agency: org.id }),
+    ]);
+    const capFor = new Map((caps ?? []).map((c) => [c.organization_id, c]));
+    const usageFor = new Map((usage ?? []).map((u) => [u.organization_id, u]));
+    const sentTotal = (usage ?? []).reduce((n, u) => n + Number(u.sent_this_month), 0);
+    const aiTotal = (usage ?? []).reduce((n, u) => n + Number(u.ai_calls_this_month), 0);
     return (
       <div className="flex max-w-4xl flex-col gap-6">
         <PageHeader title="Agency" />
@@ -56,40 +77,103 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
                   <th className="pb-2">Active campaigns</th>
                   <th className="pb-2">Sent in 7 days</th>
                   <th className="pb-2">Unread threads</th>
+                  <th className="pb-2">Sent this month</th>
+                  <th className="pb-2">AI calls this month</th>
                   <th className="pb-2" />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((c) => (
-                  <tr key={c.id} className="border-t border-slate-100 align-top">
-                    <td className="py-2">{displayName(c.name, "Client workspace")}</td>
-                    <td className="py-2">{c.contacts}</td>
-                    <td className="py-2">{c.active_campaigns}</td>
-                    <td className="py-2">{c.sent_7d}</td>
-                    <td className="py-2">{c.unread_threads}</td>
-                    <td className="py-2">
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex gap-2">
-                          <form action={openClient.bind(null, c.id)}>
-                            <Button type="submit" variant="secondary">
-                              Open
-                            </Button>
-                          </form>
-                          {role === "owner" && (
-                            <form action={releaseClient.bind(null, c.id)}>
-                              <Button type="submit" variant="secondary" disabled={Number(c.direct_owners) === 0}>
-                                Release
+                  <Fragment key={c.id}>
+                    <tr className="border-t border-slate-100 align-top">
+                      <td className="py-2">{displayName(c.name, "Client workspace")}</td>
+                      <td className="py-2">{c.contacts}</td>
+                      <td className="py-2">{c.active_campaigns}</td>
+                      <td className="py-2">{c.sent_7d}</td>
+                      <td className="py-2">{c.unread_threads}</td>
+                      <td className="py-2">{usageOf(Number(usageFor.get(c.id)?.sent_this_month ?? 0), capFor.get(c.id)?.monthly_send_cap)}</td>
+                      <td className="py-2">{usageOf(Number(usageFor.get(c.id)?.ai_calls_this_month ?? 0), capFor.get(c.id)?.monthly_ai_cap)}</td>
+                      <td className="py-2">
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex gap-2">
+                            <form action={openClient.bind(null, c.id)}>
+                              <Button type="submit" variant="secondary">
+                                Open
                               </Button>
                             </form>
-                          )}
+                            {role === "owner" && (
+                              <form action={releaseClient.bind(null, c.id)}>
+                                <Button type="submit" variant="secondary" disabled={Number(c.direct_owners) === 0}>
+                                  Release
+                                </Button>
+                              </form>
+                            )}
+                          </div>
+                          {role === "owner" && Number(c.direct_owners) === 0 && <span className="text-xs text-slate-500">Needs its own owner to release</span>}
                         </div>
-                        {role === "owner" && Number(c.direct_owners) === 0 && <span className="text-xs text-slate-500">Needs its own owner to release</span>}
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                    </tr>
+                    {canManage && (
+                      <tr>
+                        <td colSpan={8} className="pb-3">
+                          <form action={saveClientCaps.bind(null, c.id)} className="flex flex-wrap items-end gap-2">
+                            <Field label="Monthly send cap">
+                              <Input type="number" name="monthly_send_cap" min={1} max={10000000} placeholder="No limit" defaultValue={capFor.get(c.id)?.monthly_send_cap ?? ""} />
+                            </Field>
+                            <Field label="Monthly AI cap">
+                              <Input type="number" name="monthly_ai_cap" min={1} max={1000000} placeholder="No limit" defaultValue={capFor.get(c.id)?.monthly_ai_cap ?? ""} />
+                            </Field>
+                            <Button type="submit" variant="secondary">
+                              Save caps
+                            </Button>
+                          </form>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
+          )}
+        </Card>
+        <Card className="flex flex-col gap-3 text-sm">
+          <h2 className="font-medium">Shared limits</h2>
+          <p className="text-slate-600">
+            This month in UTC. The send pool counts campaign mail sent by {org.name} and every client workspace. The AI pool counts AI calls made
+            with this agency&apos;s key, here and by clients. Blank means no limit.
+          </p>
+          <dl className="grid grid-cols-[12rem_1fr] gap-y-1">
+            <dt className="text-slate-500">Campaign mail sent</dt>
+            <dd>{usageOf(sentTotal, pools?.monthly_send_pool)}</dd>
+            <dt className="text-slate-500">AI calls with the agency key</dt>
+            <dd>{usageOf(aiTotal, pools?.monthly_ai_pool)}</dd>
+            <dt className="text-slate-500">Key shared with clients</dt>
+            <dd>{pools?.share_ai_key ? "Yes" : "No"}</dd>
+          </dl>
+          {canManage && (
+            <form action={saveAgencyPools} className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Monthly send pool">
+                  <Input type="number" name="monthly_send_pool" min={1} max={10000000} placeholder="No limit" defaultValue={pools?.monthly_send_pool ?? ""} />
+                </Field>
+                <Field label="Monthly AI pool">
+                  <Input type="number" name="monthly_ai_pool" min={1} max={1000000} placeholder="No limit" defaultValue={pools?.monthly_ai_pool ?? ""} />
+                </Field>
+              </div>
+              <label className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-2">
+                  <input type="checkbox" name="share_ai_key" defaultChecked={pools?.share_ai_key ?? false} className="h-4 w-4" />
+                  Let client workspaces use this agency&apos;s AI key
+                </span>
+                <span className="pl-6 text-xs text-slate-500">
+                  Off by default. Your AI provider bills every call a client makes with it. Calls count toward the AI pool and each client&apos;s AI cap.
+                  A client also needs AI turned on.
+                </span>
+              </label>
+              <div>
+                <Button type="submit">Save shared limits</Button>
+              </div>
+            </form>
           )}
         </Card>
         <Card className="flex flex-col gap-2 text-sm">
@@ -168,6 +252,8 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
   if (org.agency_id) {
     const { data: agencyRows } = await supabase.rpc("workspace_agency", { p_org: org.id });
     const agencyName = displayName(agencyRows?.[0]?.agency_name, "an agency");
+    const { data: poolRows } = await supabase.rpc("workspace_pool_usage", { p_org: org.id });
+    const pool = poolRows?.[0];
     return (
       <div className="flex max-w-3xl flex-col gap-6">
         <PageHeader title="Agency" />
@@ -187,6 +273,27 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
             </form>
           )}
         </Card>
+        {pool && (
+          <Card className="flex flex-col gap-3 text-sm">
+            <h2 className="font-medium">Shared limits</h2>
+            <p className="text-slate-600">Set by {agencyName}, counted this month in UTC.</p>
+            <dl className="grid grid-cols-[12rem_1fr] gap-y-1">
+              <dt className="text-slate-500">Campaign mail sent</dt>
+              <dd>{usageOf(Number(pool.sent_this_month), pool.monthly_send_cap)}</dd>
+              <dt className="text-slate-500">AI calls with the agency key</dt>
+              <dd>{usageOf(Number(pool.ai_calls_this_month), pool.monthly_ai_cap)}</dd>
+              <dt className="text-slate-500">Agency AI key</dt>
+              <dd>{pool.agency_key_available ? "Available to this workspace" : "Not shared"}</dd>
+            </dl>
+            {pool.send_pool_reached && (
+              <Alert tone="info">The agency&apos;s send pool for this month is used up. Campaign sending waits until next month or until the agency raises it.</Alert>
+            )}
+            {pool.monthly_send_cap !== null && Number(pool.sent_this_month) >= pool.monthly_send_cap && (
+              <Alert tone="info">This workspace&apos;s send cap for this month is reached. Campaign sending waits until next month or until the agency raises it.</Alert>
+            )}
+            {pool.ai_pool_reached && <Alert tone="info">The agency&apos;s AI pool for this month is used up, so the agency AI key is not used until next month or until the agency raises it.</Alert>}
+          </Card>
+        )}
       </div>
     );
   }

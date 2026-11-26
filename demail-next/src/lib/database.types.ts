@@ -1253,6 +1253,111 @@ export type Database = {
         };
         Relationships: [];
       };
+      crm_connections: {
+        Row: {
+          organization_id: string;
+          provider: "hubspot";
+          enabled: boolean;
+          pull_contacts: boolean;
+          push_replies: boolean;
+          label_id: string | null;
+          portal_id: string | null;
+          pull_cursor: number | null;
+          push_cursor: string;
+          next_sync_at: string;
+          lease_until: string | null;
+          last_synced_at: string | null;
+          last_error: string | null;
+          consecutive_errors: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          provider: "hubspot";
+          enabled?: boolean;
+          pull_contacts?: boolean;
+          push_replies?: boolean;
+          label_id?: string | null;
+          portal_id?: string | null;
+          pull_cursor?: number | null;
+          push_cursor?: string;
+          next_sync_at?: string;
+          lease_until?: string | null;
+          last_synced_at?: string | null;
+          last_error?: string | null;
+          consecutive_errors?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          provider?: "hubspot";
+          enabled?: boolean;
+          pull_contacts?: boolean;
+          push_replies?: boolean;
+          label_id?: string | null;
+          portal_id?: string | null;
+          pull_cursor?: number | null;
+          push_cursor?: string;
+          next_sync_at?: string;
+          lease_until?: string | null;
+          last_synced_at?: string | null;
+          last_error?: string | null;
+          consecutive_errors?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      crm_credentials: {
+        Row: {
+          organization_id: string;
+          provider: "hubspot";
+          ciphertext: string;
+          key_hint: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          provider: "hubspot";
+          ciphertext: string;
+          key_hint: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          provider?: "hubspot";
+          ciphertext?: string;
+          key_hint?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      crm_contact_links: {
+        Row: {
+          organization_id: string;
+          provider: "hubspot";
+          contact_id: string;
+          external_id: string;
+          synced_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          provider: "hubspot";
+          contact_id: string;
+          external_id: string;
+          synced_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          provider?: "hubspot";
+          contact_id?: string;
+          external_id?: string;
+          synced_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1326,6 +1431,10 @@ export type Database = {
       claim_reply_classifications: {
         Args: { batch: number };
         Returns: Database["public"]["Tables"]["reply_intents"]["Row"][];
+      };
+      claim_due_crm_syncs: {
+        Args: { batch: number; p_org?: string };
+        Returns: Database["public"]["Tables"]["crm_connections"]["Row"][];
       };
     };
     Enums: {

@@ -1,8 +1,8 @@
 -- Run once in the Supabase SQL editor after the first deploy. Not a migration: it holds your URL and secret.
 -- 1. Replace the two placeholders below.
 -- 2. Run the whole file. Re-running replaces the jobs and the stored secrets.
--- Jobs: demail-send, demail-sync, demail-warmup and demail-ai (every minute, HTTP), demail-domains (hourly, HTTP),
--- demail-health (every 5 minutes, SQL: health bands and warmup planning) and demail-purge (daily 03:17, SQL).
+-- Jobs: demail-send, demail-sync, demail-warmup and demail-ai (every minute, HTTP), demail-crm (every 5 minutes, HTTP),
+-- demail-domains (hourly, HTTP), demail-health (every 5 minutes, SQL: health bands and warmup planning) and demail-purge (daily 03:17, SQL).
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;
 create extension if not exists supabase_vault with schema vault;
@@ -91,6 +91,22 @@ select cron.schedule(
   $job$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets where name = 'demail_app_url') || '/api/cron/ai',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'demail_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $job$
+);
+select cron.unschedule('demail-crm') where exists (select 1 from cron.job where jobname = 'demail-crm');
+select cron.schedule(
+  'demail-crm',
+  '*/5 * * * *',
+  $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'demail_app_url') || '/api/cron/crm',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'demail_cron_secret')

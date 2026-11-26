@@ -18,12 +18,14 @@ export default async function ContactPage({
   const { supabase, org, canManage } = await getOrgContext();
   const { data: contact } = await supabase.from("contacts").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!contact) notFound();
-  const [{ data: labels }, { data: links }, { data: sentMessages }, { data: events }, { data: threadRows }] = await Promise.all([
+  const [{ data: labels }, { data: links }, { data: sentMessages }, { data: events }, { data: threadRows }, { data: crmLink }, { data: crmConn }] = await Promise.all([
     supabase.from("labels").select("id, name").eq("organization_id", org.id).order("name"),
     supabase.from("contact_labels").select("label_id").eq("contact_id", id).eq("organization_id", org.id),
     supabase.from("messages").select("id, subject, sent_at").eq("contact_id", id).eq("organization_id", org.id).eq("status", "sent").order("sent_at", { ascending: false }).limit(50),
     supabase.from("tracking_events").select("id, type, url, created_at").eq("contact_id", id).eq("organization_id", org.id).eq("counted", true).order("created_at", { ascending: false }).limit(50),
     supabase.from("threads").select("id").eq("contact_id", id).eq("organization_id", org.id).limit(100),
+    supabase.from("crm_contact_links").select("external_id").eq("contact_id", id).eq("organization_id", org.id).eq("provider", "hubspot").maybeSingle(),
+    supabase.from("crm_connections").select("portal_id").eq("organization_id", org.id).eq("provider", "hubspot").maybeSingle(),
   ]);
   const threadIds = (threadRows ?? []).map((t) => t.id);
   const { data: inbound } = threadIds.length
@@ -53,6 +55,24 @@ export default async function ContactPage({
       {sp.error && <Alert>{sp.error}</Alert>}
       {sp.saved && <Alert tone="info">Saved.</Alert>}
       {!contact.subscribed && <Alert tone="info">This contact is unsubscribed and will not receive campaign email.</Alert>}
+      {crmLink && (
+        <p className="text-sm text-slate-600">
+          Linked to HubSpot
+          {crmConn?.portal_id && (
+            <>
+              {" "}
+              <a
+                href={`https://app.hubspot.com/contacts/${encodeURIComponent(crmConn.portal_id)}/record/0-1/${encodeURIComponent(crmLink.external_id)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-700"
+              >
+                Open in HubSpot
+              </a>
+            </>
+          )}
+        </p>
+      )}
       <Card>
         <form action={updateContact.bind(null, id)} className="flex flex-col gap-3">
           <ContactFields values={contact} />

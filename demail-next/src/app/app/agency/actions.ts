@@ -3,7 +3,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getOrgContext, setOrgCookie } from "@/lib/org";
 import { cleanText, isSafeName } from "@/lib/input";
+import { publicEnv } from "@/lib/env";
 const PATH = "/app/agency";
+export type AttachState = { link?: string; error?: string };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NEEDS_OWNER = "A client workspace needs its own owner before it leaves the agency. Invite one in that workspace's Members page first.";
 const fail = (message: string): never => redirect(`${PATH}?error=${encodeURIComponent(message)}`);
@@ -57,4 +59,22 @@ export async function leaveAgency() {
   const { error } = await supabase.rpc("detach_client_workspace", { p_client: org.id });
   if (error) return fail(detachMessage(error.message));
   return done("This workspace left the agency. Agency staff no longer reach it.");
+}
+export async function createAttachInvite(_prev: AttachState, formData: FormData): Promise<AttachState> {
+  void formData;
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!org.is_agency || !canManage) return { error: "Only owners and admins of an agency can invite a workspace." };
+  const { data, error } = await supabase.rpc("create_agency_attach_invite", { p_agency: org.id });
+  if (error || !data) {
+    return { error: error?.message.includes("too many open") ? "Revoke an open invitation first. An agency can have 20 at a time." : "Could not create the invitation." };
+  }
+  revalidatePath(PATH);
+  return { link: `${publicEnv().NEXT_PUBLIC_APP_URL}/agency-invite/${data}` };
+}
+export async function revokeAttachInvite(id: string) {
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!UUID_RE.test(id) || !canManage) return fail("Only owners and admins of the agency can revoke an invitation.");
+  const { error } = await supabase.from("agency_attach_invites").delete().eq("id", id).eq("organization_id", org.id);
+  if (error) return fail("Could not revoke the invitation.");
+  return done("The invitation was revoked.");
 }

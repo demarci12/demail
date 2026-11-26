@@ -4,7 +4,8 @@ import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { displayName } from "@/lib/input";
-import { createClientWorkspace, leaveAgency, openClient, releaseClient, turnIntoAgency, turnOffAgency } from "./actions";
+import { createClientWorkspace, leaveAgency, openClient, releaseClient, revokeAttachInvite, turnIntoAgency, turnOffAgency } from "./actions";
+import { AttachInviteForm } from "./attach-invite-form";
 export default async function AgencyPage({ searchParams }: { searchParams: Promise<{ error?: string; msg?: string }> }) {
   const { error, msg } = await searchParams;
   const { supabase, org, role, canManage } = await getOrgContext();
@@ -17,6 +18,16 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
   if (org.is_agency) {
     const { data: clients } = await supabase.rpc("agency_clients", { p_agency: org.id });
     const rows = clients ?? [];
+    const { data: invites } = canManage
+      ? await supabase
+          .from("agency_attach_invites")
+          .select("id, created_at, expires_at")
+          .eq("organization_id", org.id)
+          .is("accepted_at", null)
+          .gt("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+      : { data: [] };
+    const openInvites = invites ?? [];
     return (
       <div className="flex max-w-4xl flex-col gap-6">
         <PageHeader title="Agency" />
@@ -103,6 +114,43 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
             </form>
           </Card>
         )}
+        {canManage && (
+          <Card className="flex flex-col gap-3 text-sm">
+            <h2 className="font-medium">Invite an existing workspace</h2>
+            <p>
+              An owner of that workspace opens the link, picks the workspace and accepts. Every member of {org.name} then opens it with the role they
+              have here, and its own members keep their access.
+            </p>
+            <p className="text-slate-600">Each link works once and expires after 7 days.</p>
+            <AttachInviteForm />
+            {openInvites.length > 0 && (
+              <table className="w-full text-sm">
+                <thead className="text-left text-xs text-slate-500">
+                  <tr>
+                    <th className="pb-2">Created</th>
+                    <th className="pb-2">Expires</th>
+                    <th className="pb-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {openInvites.map((i) => (
+                    <tr key={i.id} className="border-t border-slate-100">
+                      <td className="py-2">{new Date(i.created_at).toLocaleDateString()}</td>
+                      <td className="py-2">{new Date(i.expires_at).toLocaleDateString()}</td>
+                      <td className="py-2 text-right">
+                        <form action={revokeAttachInvite.bind(null, i.id)}>
+                          <Button type="submit" variant="secondary">
+                            Revoke
+                          </Button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        )}
         {role === "owner" && (
           <Card className="flex flex-col gap-3 text-sm">
             <h2 className="font-medium">Turn off agency</h2>
@@ -152,7 +200,7 @@ export default async function AgencyPage({ searchParams }: { searchParams: Promi
           An agency creates a separate workspace for each client. Every member of the agency can open every client workspace with their agency role,
           and the workspace switcher lists the clients so you can see each one as its team does.
         </p>
-        <p className="text-slate-600">Existing workspaces cannot be attached to an agency. Client workspaces are created from the agency.</p>
+        <p className="text-slate-600">An agency can also invite an existing workspace. An owner of that workspace opens the invitation link and accepts it.</p>
         {role === "owner" ? (
           <form action={turnIntoAgency}>
             <Button type="submit">Turn into an agency</Button>

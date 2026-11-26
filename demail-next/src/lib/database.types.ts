@@ -1403,6 +1403,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      agency_attach_invites: {
+        Row: {
+          id: string;
+          organization_id: string;
+          token_hash: string;
+          created_by: string | null;
+          expires_at: string;
+          accepted_org: string | null;
+          accepted_by: string | null;
+          accepted_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          token_hash: string;
+          created_by?: string | null;
+          expires_at: string;
+          accepted_org?: string | null;
+          accepted_by?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          token_hash?: string;
+          created_by?: string | null;
+          expires_at?: string;
+          accepted_org?: string | null;
+          accepted_by?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       crm_push_skips: {
         Row: {
           organization_id: string;
@@ -1665,6 +1701,9 @@ export type Database = {
       };
       workspace_agency: { Args: { p_org: string }; Returns: { agency_id: string; agency_name: string }[] };
       workspace_branding: { Args: { p_org: string }; Returns: Database["public"]["Tables"]["org_branding"]["Row"][] };
+      create_agency_attach_invite: { Args: { p_agency: string }; Returns: string };
+      agency_attach_preview: { Args: { p_token: string }; Returns: { agency_id: string; agency_name: string; expires_at: string }[] };
+      accept_agency_attach: { Args: { p_token: string; p_org: string }; Returns: string };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

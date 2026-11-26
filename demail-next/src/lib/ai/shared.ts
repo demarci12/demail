@@ -120,3 +120,25 @@ export function cleanReplyDraft(text: string): string | null {
   out = out.replace(/^subject:[^\n]*(\n|$)/i, "").trim();
   return out.length >= 1 && out.length <= 5000 ? out : null;
 }
+export const INTENTS = ["interested", "meeting", "question", "not_interested", "unsubscribe", "out_of_office", "referral", "other"] as const;
+export type Intent = (typeof INTENTS)[number];
+export const INTENT_LABELS: Record<Intent, string> = {
+  interested: "Interested",
+  meeting: "Wants a meeting",
+  question: "Question",
+  not_interested: "Not interested",
+  unsubscribe: "Asked to stop",
+  out_of_office: "Out of office",
+  referral: "Referral",
+  other: "Other",
+};
+export function isIntent(v: unknown): v is Intent {
+  return typeof v === "string" && (INTENTS as readonly string[]).includes(v);
+}
+// A classification is a JSON object with one of the fixed intents and an optional short summary.
+export function parseIntent(text: string): { intent: Intent; summary: string | null } | null {
+  const obj = parseJsonObject(text);
+  if (!obj || !isIntent(obj.intent)) return null;
+  const summary = typeof obj.summary === "string" ? obj.summary.trim().slice(0, 200) : "";
+  return { intent: obj.intent, summary: summary || null };
+}

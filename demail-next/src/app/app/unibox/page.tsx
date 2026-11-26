@@ -3,10 +3,11 @@ import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
+import { INTENTS, INTENT_LABELS, isIntent } from "@/lib/ai/shared";
 import { syncNow } from "./actions";
 import { UniboxLive } from "./live";
 const PAGE = 30;
-type Search = { error?: string; mailbox?: string; status?: string; unread?: string; before?: string };
+type Search = { error?: string; mailbox?: string; status?: string; unread?: string; intent?: string; before?: string };
 export default async function UniboxPage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
   const { supabase, org } = await getOrgContext();
@@ -18,6 +19,7 @@ export default async function UniboxPage({ searchParams }: { searchParams: Promi
   let q = supabase.from("threads").select("*").eq("organization_id", org.id).eq("status", status).order("last_message_at", { ascending: false }).limit(PAGE + 1);
   if (sp.mailbox && mailboxes.some((m) => m.id === sp.mailbox)) q = q.eq("mailbox_id", sp.mailbox);
   if (sp.unread === "1") q = q.eq("is_unread", true);
+  if (isIntent(sp.intent)) q = q.eq("intent", sp.intent);
   if (before) q = q.lt("last_message_at", before);
   const { data } = await q;
   const rows = data ?? [];
@@ -30,6 +32,7 @@ export default async function UniboxPage({ searchParams }: { searchParams: Promi
   if (status === "archived") params.set("status", "archived");
   if (sp.mailbox) params.set("mailbox", sp.mailbox);
   if (sp.unread === "1") params.set("unread", "1");
+  if (isIntent(sp.intent)) params.set("intent", sp.intent);
   const nextParams = new URLSearchParams(params);
   if (rows.length > PAGE) nextParams.set("before", threads[threads.length - 1].last_message_at);
   return (
@@ -64,6 +67,14 @@ export default async function UniboxPage({ searchParams }: { searchParams: Promi
             </option>
           ))}
         </Select>
+        <Select name="intent" defaultValue={isIntent(sp.intent) ? sp.intent : ""} className="w-44" aria-label="Intent">
+          <option value="">Any intent</option>
+          {INTENTS.map((i) => (
+            <option key={i} value={i}>
+              {INTENT_LABELS[i]}
+            </option>
+          ))}
+        </Select>
         <label className="flex items-center gap-1">
           <input type="checkbox" name="unread" value="1" defaultChecked={sp.unread === "1"} /> Unread only
         </label>
@@ -84,6 +95,7 @@ export default async function UniboxPage({ searchParams }: { searchParams: Promi
                     <span className={`flex gap-2 text-sm ${t.is_unread ? "font-semibold" : ""}`}>
                       <span className="shrink-0">{who}</span>
                       <span className="truncate">{t.subject || "(no subject)"}</span>
+                      {t.intent && <span className="shrink-0 rounded bg-slate-100 px-1.5 text-xs font-normal text-slate-600">{INTENT_LABELS[t.intent]}</span>}
                     </span>
                     <span className="block truncate text-xs text-slate-500">{t.snippet}</span>
                     <span className="block text-xs text-slate-400">{boxEmail.get(t.mailbox_id)}</span>

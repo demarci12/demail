@@ -4,6 +4,7 @@ import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { INTENT_LABELS } from "@/lib/ai/shared";
 import { discardReplyDraft, draftReplyWithAi, replyToThread, setThreadStatus } from "../actions";
 import { UniboxLive } from "../live";
 import { MarkRead } from "../mark-read";
@@ -20,10 +21,12 @@ export default async function ThreadPage({ params, searchParams }: { params: Pro
     thread.campaign_id ? supabase.from("campaigns").select("id, name").eq("id", thread.campaign_id).eq("organization_id", org.id).maybeSingle() : Promise.resolve({ data: null }),
     supabase.from("mailboxes").select("email").eq("id", thread.mailbox_id).eq("organization_id", org.id).maybeSingle(),
   ]);
-  const [{ data: aiSettings }, { data: draft }] = await Promise.all([
+  const [{ data: aiSettings }, { data: draft }, { data: intentRows }] = await Promise.all([
     supabase.from("ai_settings").select("enabled").eq("organization_id", org.id).maybeSingle(),
     supabase.from("ai_drafts").select("id, body").eq("organization_id", org.id).eq("thread_id", thread.id).eq("kind", "reply").eq("status", "draft").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("reply_intents").select("thread_message_id, intent, summary").eq("thread_id", thread.id).eq("organization_id", org.id).eq("status", "done"),
   ]);
+  const intents = new Map((intentRows ?? []).map((r) => [r.thread_message_id, r]));
   const archived = thread.status === "archived";
   return (
     <div className="flex max-w-3xl flex-col gap-4">
@@ -53,18 +56,27 @@ export default async function ThreadPage({ params, searchParams }: { params: Pro
       </p>
       {error && <Alert>{error}</Alert>}
       <div className="flex flex-col gap-3">
-        {(messages ?? []).map((m) => (
-          <Card key={m.id} className={m.direction === "out" ? "bg-slate-50" : ""}>
-            <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
-              <span>
-                {m.direction === "out" ? "You" : m.from_name || m.from_email}
-                {m.kind !== "sent" && m.kind !== "reply" && <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5">{m.kind === "auto_reply" ? "auto reply" : m.kind}</span>}
-              </span>
-              <time dateTime={m.sent_at}>{new Date(m.sent_at).toLocaleString()}</time>
-            </div>
-            <pre className="whitespace-pre-wrap break-words font-sans text-sm">{m.body_text}</pre>
-          </Card>
-        ))}
+        {(messages ?? []).map((m) => {
+          const verdict = m.direction === "in" && m.kind === "reply" ? intents.get(m.id) : undefined;
+          return (
+            <Card key={m.id} className={m.direction === "out" ? "bg-slate-50" : ""}>
+              <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+                <span>
+                  {m.direction === "out" ? "You" : m.from_name || m.from_email}
+                  {m.kind !== "sent" && m.kind !== "reply" && <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5">{m.kind === "auto_reply" ? "auto reply" : m.kind}</span>}
+                </span>
+                <time dateTime={m.sent_at}>{new Date(m.sent_at).toLocaleString()}</time>
+              </div>
+              <pre className="whitespace-pre-wrap break-words font-sans text-sm">{m.body_text}</pre>
+              {verdict?.intent && (
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className="rounded bg-slate-100 px-1.5 text-slate-600">{INTENT_LABELS[verdict.intent]}</span>
+                  {verdict.summary && <span>AI: {verdict.summary}</span>}
+                </p>
+              )}
+            </Card>
+          );
+        })}
       </div>
       <Card>
         {draft && (

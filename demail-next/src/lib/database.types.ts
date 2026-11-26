@@ -1,4 +1,5 @@
 // Hand-written to match supabase/migrations. Regenerate with `supabase gen types typescript` when a database is available.
+export type ReplyIntent = "interested" | "meeting" | "question" | "not_interested" | "unsubscribe" | "out_of_office" | "referral" | "other";
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
@@ -632,6 +633,7 @@ export type Database = {
           last_message_at: string;
           is_unread: boolean;
           status: 'open' | 'archived';
+          intent: ReplyIntent | null;
           created_at: string;
         };
         Insert: {
@@ -646,6 +648,7 @@ export type Database = {
           last_message_at: string;
           is_unread?: boolean;
           status?: 'open' | 'archived';
+          intent?: ReplyIntent | null;
           created_at?: string;
         };
         Update: {
@@ -660,6 +663,7 @@ export type Database = {
           last_message_at?: string;
           is_unread?: boolean;
           status?: 'open' | 'archived';
+          intent?: ReplyIntent | null;
           created_at?: string;
         };
         Relationships: [];
@@ -1207,6 +1211,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      reply_intents: {
+        Row: {
+          thread_message_id: string;
+          organization_id: string;
+          thread_id: string;
+          status: "running" | "done" | "failed";
+          intent: ReplyIntent | null;
+          summary: string | null;
+          attempts: number;
+          lease_until: string | null;
+          next_attempt_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          thread_message_id: string;
+          organization_id: string;
+          thread_id: string;
+          status?: "running" | "done" | "failed";
+          intent?: ReplyIntent | null;
+          summary?: string | null;
+          attempts?: number;
+          lease_until?: string | null;
+          next_attempt_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          thread_message_id?: string;
+          organization_id?: string;
+          thread_id?: string;
+          status?: "running" | "done" | "failed";
+          intent?: ReplyIntent | null;
+          summary?: string | null;
+          attempts?: number;
+          lease_until?: string | null;
+          next_attempt_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1276,6 +1322,10 @@ export type Database = {
       record_ai_tokens: {
         Args: { p_org: string; p_source: "workspace" | "instance"; p_prompt: number; p_completion: number };
         Returns: undefined;
+      };
+      claim_reply_classifications: {
+        Args: { batch: number };
+        Returns: Database["public"]["Tables"]["reply_intents"]["Row"][];
       };
     };
     Enums: {

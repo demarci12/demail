@@ -46,7 +46,7 @@ export default async function ConnectPage({ params, searchParams }: { params: Pr
   const label = link.label ? displayName(link.label, "") : "";
   const providers = oauthProviders();
   const buttonStyle = brand ? { backgroundColor: brand.accent_color } : undefined;
-  const message = error ? ERRORS[error] : undefined;
+  const message = error && Object.hasOwn(ERRORS, error) ? ERRORS[error] : undefined;
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
       <Card className="flex w-full flex-col gap-4">

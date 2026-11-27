@@ -112,7 +112,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
   } else {
     body = (
       <form method="post" action={`/api/forms/${slug}`} className="flex flex-col gap-3">
-        {error ? <Alert>{ERRORS[error] ?? ERRORS.failed}</Alert> : null}
+        {error ? <Alert>{Object.hasOwn(ERRORS, error) ? ERRORS[error] : ERRORS.failed}</Alert> : null}
         {fields.map((f) => (
           <FieldRow key={f.key} field={f} />
         ))}

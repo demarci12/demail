@@ -11,10 +11,12 @@ export async function storeConnectedMailbox(
   { orgId, provider, tokens, profile, fromName, createdBy }: { orgId: string; provider: OAuthProvider; tokens: TokenSet & { refresh_token: string }; profile: Profile; fromName: string; createdBy: string | null },
 ): Promise<string> {
   const fields = { provider, provider_account_id: profile.accountId, status: "active" as const, last_error: null };
-  const { data: existing } = await admin.from("mailboxes").select("id").eq("organization_id", orgId).eq("email", profile.email).maybeSingle();
+  const { data: existing } = await admin.from("mailboxes").select("id, status").eq("organization_id", orgId).eq("email", profile.email).maybeSingle();
   let mailboxId = existing?.id;
   if (mailboxId) {
-    const { error } = await admin.from("mailboxes").update(fields).eq("id", mailboxId).eq("organization_id", orgId);
+    // Reconnecting restores credentials only; a paused mailbox stays paused until a member resumes it.
+    const update = existing?.status === "paused" ? { provider, provider_account_id: profile.accountId, last_error: null } : fields;
+    const { error } = await admin.from("mailboxes").update(update).eq("id", mailboxId).eq("organization_id", orgId);
     if (error) throw new Error("update failed");
   } else {
     const { data, error } = await admin

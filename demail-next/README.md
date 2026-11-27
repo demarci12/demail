@@ -56,6 +56,11 @@ Not included yet: branching steps, subsequences, attachments, SMTP/IMAP mailboxe
 8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
 
 If you skip step 7, `vercel.json` still calls the same route once a day. That is enough to try the app, not to send on a schedule.
+## Upgrading
+1. **Apply new migrations first.** Run `supabase db push` from `demail-next/`, or paste each new file in `supabase/migrations/` into the SQL editor in filename order. Never edit a migration that is already applied; changes always come as a new file.
+2. **Then deploy the new app code** to Vercel.
+3. **Re-run `supabase/setup/schedule.sql`** when the release notes add a scheduled job.
+The previous app release keeps working on the new schema, so applying migrations first is safe. Deploying the app first is not: until the migrations run, the new code calls database functions and tables that do not exist yet. For the agency release that means every workspace's campaign enrollments are held for an hour at a time with an error in the logs, and client workspaces without their own AI key get an AI provider error. Both clear on their own once the migrations are applied.
 
 ## Environment variables
 
@@ -110,6 +115,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 
 ## Connecting Google and Microsoft mailboxes
 Optional. Resend senders keep working without any of this. Set `MAILBOX_ENCRYPTION_KEY` first, then one or both providers. The redirect URI is `<NEXT_PUBLIC_APP_URL>/app/mailboxes/connect/<google|microsoft>/callback`. SMTP and IMAP mailboxes are not supported, because long-lived connections cannot run on Vercel or Supabase Edge Functions.
+Reconnecting an address that is already in the workspace replaces its credentials and clears its error. A disconnected mailbox becomes active again, while a paused one stays paused until a member presses Resume.
 
 **Google**
 1. In Google Cloud, create a project and enable the Gmail API.
@@ -131,7 +137,7 @@ Optional. Resend senders keep working without any of this. Set `MAILBOX_ENCRYPTI
 - **Shown once.** The link is shown once when it is created and only a hash of it is stored, so a lost link cannot be shown again; create a new one. The card lists open links with their label, uses and expiry, and Revoke deletes a link at once.
 - **What the client sees.** Opening the link needs no account. The page shows the workspace name, the label, the agency branding when there is one, what connecting allows and a Connect Google or Connect Microsoft button for each configured provider. The page sends no referrer and is not indexed.
 - **No provider change.** The link uses the same redirect URIs as above, so nothing changes in Google Cloud or Microsoft Entra.
-- **Uses.** A use is taken when the provider grants access, just before the mailbox is stored. Reconnecting an address that is already in the workspace counts as a use.
+- **Uses.** A use is taken when the provider grants access, just before the mailbox is stored. Reconnecting an address that is already in the workspace counts as a use. It replaces the credentials but never resumes a mailbox the workspace paused; only a member can do that.
 - **Afterwards.** The mailbox appears on the Mailboxes page like any other connected mailbox, recorded as connected by the member who created the link, with the provider's display name as its sender name when that name passes the name check.
 
 ## How sending works
@@ -226,7 +232,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Who sets it.** Owners and admins of an agency workspace open Branding (`/app/settings/branding`, linked from the agency page). Other members see the settings read-only. Client workspaces use their agency's branding and cannot set their own.
 - **What it changes.** In the dashboard of the agency and of every client workspace: the sidebar name and logo instead of Demail, a 3 pixel accent border on the sidebar header, the browser tab title and icon, the support, privacy and terms links at the bottom of the sidebar, and the Powered by Demail line, which you can hide. Hosted forms of these workspaces show the logo above the form, the privacy and terms links below it and the Powered by line unless hidden; each form keeps its own accent color. The unsubscribe page of contacts in these workspaces shows the logo, the privacy and terms links and the accent color on its button, and the tab title and icon follow the brand.
 - **Logo.** The logo is an https address, not an upload. Every viewer's browser loads it from that host (with no referrer), so pick a host you trust that stays online. Links must be full https addresses, and the brand name passes the same check as other names.
-- **Not changed yet.** The sign-in page, a custom domain and sender names stay as they are. These are planned for Phase 5 part 4.
+- **Not changed yet.** The sign-in page, a custom domain and sender names stay as they are. A custom domain and a branded sign-in page are planned for Phase 5 part 4; branded sender names are still open.
 ## Shared limits for agencies
 - **Who sets them.** Owners and admins of an agency set them in the Shared limits card on the agency page, and a cap per client in its row of the client list. Client members see their caps, this month's usage and whether a pool is used up on their own Agency page. Every limit is unset by default, which means no limit.
 - **Monthly window.** Usage is counted per UTC calendar month and starts again on the first of the month.
@@ -275,7 +281,7 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 - **Attach consent.** An existing workspace joins an agency only through `accept_agency_attach`, called by a direct owner of that workspace with a single-use invitation token. The organizations trigger allows the change only while that function marks the workspace, so no other path can attach one.
 - **Shared limits.** Pools and caps are counted per UTC calendar month from `messages` and `ai_usage`, with caps keyed by the client and its current agency. Sharing the agency AI key is off by default because the agency's provider bills those calls; calls with it are recorded with source `agency`.
 - **Connect links.** A link holder has no session, so the two OAuth callback paths are not forced through sign-in; the callback checks the session and role for member flows and the link from the sealed cookie for link flows. `consume_connect_link` takes one use atomically before the mailbox is stored, and the lookup and consume functions run only with the service role.
-- **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. Agency staff reach client rows through `is_org_member` and `has_org_role`, which also accept a member of the client's agency, so no policy names agencies itself. Members can only rename a workspace; agency fields change only through security definer functions. The service role key is used only in `src/lib/supabase/admin.ts`.
+- **Tenant isolation.** Every organization-owned table has `organization_id`, row level security and composite foreign keys, so a row cannot reference another workspace. Server Actions never take the workspace from form data. Agency staff reach client rows through `is_org_member` and `has_org_role`, which also accept a member of the client's agency, so no policy names agencies itself. Members can only rename a workspace; agency fields change only through security definer functions. Trigger functions run only as triggers and no signed-in or anonymous user can call them. The service role key is used only in `src/lib/supabase/admin.ts`.
 
 ## Rotating the mailbox encryption key
 1. Set `MAILBOX_ENCRYPTION_KEY_PREVIOUS` to the current key.

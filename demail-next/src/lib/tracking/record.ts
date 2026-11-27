@@ -1,15 +1,15 @@
 import "server-only";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { classifyHit, type HitType } from "./classify";
+import { classifyHit, type HitType, type Verdict } from "./classify";
 import { READER_COOKIE } from "./reader";
 import { isOwnReader } from "./token";
-// Best effort: a failure here must never change what the recipient sees.
-export async function recordHit(request: NextRequest, messageId: string, type: HitType, url: string | null) {
+// Best effort: a failure here must never change what the recipient sees; null when the message is missing or on error.
+export async function recordHit(request: NextRequest, messageId: string, type: HitType, url: string | null): Promise<Verdict | null> {
   try {
     const admin = createAdminClient();
     const { data: message } = await admin.from("messages").select("sent_at").eq("id", messageId).maybeSingle();
-    if (!message) return;
+    if (!message) return null;
     const headers: Record<string, string | undefined> = {};
     request.headers.forEach((value, key) => {
       headers[key.toLowerCase()] = value;
@@ -33,7 +33,8 @@ export async function recordHit(request: NextRequest, messageId: string, type: H
       p_reason: verdict.reason,
       p_ua: userAgent ? userAgent.slice(0, 200) : null,
     });
+    return verdict;
   } catch {
-    // Swallowed on purpose.
+    return null;
   }
 }

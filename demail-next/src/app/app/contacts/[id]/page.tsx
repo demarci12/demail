@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
+import { cleanText } from "@/lib/input";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ContactFields } from "../fields";
@@ -18,7 +19,7 @@ export default async function ContactPage({
   const { supabase, org, canManage } = await getOrgContext();
   const { data: contact } = await supabase.from("contacts").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!contact) notFound();
-  const [{ data: labels }, { data: links }, { data: sentMessages }, { data: events }, { data: threadRows }, { data: crmLink }, { data: crmConn }] = await Promise.all([
+  const [{ data: labels }, { data: links }, { data: sentMessages }, { data: events }, { data: threadRows }, { data: crmLink }, { data: crmConn }, { data: visitorRows }] = await Promise.all([
     supabase.from("labels").select("id, name").eq("organization_id", org.id).order("name"),
     supabase.from("contact_labels").select("label_id").eq("contact_id", id).eq("organization_id", org.id),
     supabase.from("messages").select("id, subject, sent_at").eq("contact_id", id).eq("organization_id", org.id).eq("status", "sent").order("sent_at", { ascending: false }).limit(50),
@@ -26,11 +27,16 @@ export default async function ContactPage({
     supabase.from("threads").select("id").eq("contact_id", id).eq("organization_id", org.id).limit(100),
     supabase.from("crm_contact_links").select("external_id").eq("contact_id", id).eq("organization_id", org.id).eq("provider", "hubspot").maybeSingle(),
     supabase.from("crm_connections").select("portal_id").eq("organization_id", org.id).eq("provider", "hubspot").maybeSingle(),
+    supabase.from("site_visitors").select("id").eq("contact_id", id).eq("organization_id", org.id).limit(100),
   ]);
   const threadIds = (threadRows ?? []).map((t) => t.id);
   const { data: inbound } = threadIds.length
     ? await supabase.from("thread_messages").select("id, kind, subject, sent_at").in("thread_id", threadIds).eq("organization_id", org.id).eq("direction", "in").order("sent_at", { ascending: false }).limit(50)
     : { data: [] as { id: string; kind: string; subject: string | null; sent_at: string }[] };
+  const visitorIds = (visitorRows ?? []).map((v) => v.id);
+  const { data: visits } = visitorIds.length
+    ? await supabase.from("site_page_views").select("id, host, path, created_at").in("visitor_id", visitorIds).eq("organization_id", org.id).order("created_at", { ascending: false }).limit(50)
+    : { data: [] as { id: string; host: string; path: string; created_at: string }[] };
   const host = (url: string | null) => {
     try {
       return url ? new URL(url).host : "a link";
@@ -41,6 +47,7 @@ export default async function ContactPage({
   const activity = [
     ...(sentMessages ?? []).map((m) => ({ key: `m${m.id}`, at: m.sent_at ?? "", text: `Sent${m.subject ? `: ${m.subject}` : ""}` })),
     ...(events ?? []).map((e) => ({ key: `e${e.id}`, at: e.created_at, text: e.type === "open" ? "Opened an email" : `Clicked a link to ${host(e.url)}` })),
+    ...(visits ?? []).map((v) => ({ key: `v${v.id}`, at: v.created_at, text: `Visited ${cleanText(`${v.host}${v.path}`, 300)}` })),
     ...(inbound ?? []).map((t) => ({ key: `t${t.id}`, at: t.sent_at, text: `${t.kind === "reply" ? "Replied" : t.kind === "bounce" ? "Bounced" : "Automatic reply"}${t.subject ? `: ${t.subject}` : ""}` })),
   ]
     .filter((a) => a.at)

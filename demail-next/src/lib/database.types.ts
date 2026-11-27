@@ -1682,6 +1682,141 @@ export type Database = {
         };
         Relationships: [];
       };
+      site_trackers: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          public_key: string;
+          domains: string[];
+          consent_mode: "ask" | "record";
+          identify_from_email: boolean;
+          enabled: boolean;
+          retention_days: number;
+          daily_limit: number;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          name: string;
+          public_key?: string;
+          domains: string[];
+          consent_mode?: "ask" | "record";
+          identify_from_email?: boolean;
+          enabled?: boolean;
+          retention_days?: number;
+          daily_limit?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          name?: string;
+          public_key?: string;
+          domains?: string[];
+          consent_mode?: "ask" | "record";
+          identify_from_email?: boolean;
+          enabled?: boolean;
+          retention_days?: number;
+          daily_limit?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      site_visitors: {
+        Row: {
+          id: string;
+          organization_id: string;
+          tracker_id: string;
+          visitor_key: string;
+          contact_id: string | null;
+          first_seen_at: string;
+          last_seen_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          tracker_id: string;
+          visitor_key: string;
+          contact_id?: string | null;
+          first_seen_at?: string;
+          last_seen_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          tracker_id?: string;
+          visitor_key?: string;
+          contact_id?: string | null;
+          first_seen_at?: string;
+          last_seen_at?: string;
+        };
+        Relationships: [];
+      };
+      site_page_views: {
+        Row: {
+          id: string;
+          organization_id: string;
+          tracker_id: string;
+          visitor_id: string;
+          host: string;
+          path: string;
+          referrer_host: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          tracker_id: string;
+          visitor_id: string;
+          host: string;
+          path: string;
+          referrer_host?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          tracker_id?: string;
+          visitor_id?: string;
+          host?: string;
+          path?: string;
+          referrer_host?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      site_rate_buckets: {
+        Row: {
+          organization_id: string;
+          tracker_id: string;
+          bucket: string;
+          window_start: string;
+          hits: number;
+        };
+        Insert: {
+          organization_id: string;
+          tracker_id: string;
+          bucket: string;
+          window_start: string;
+          hits?: number;
+        };
+        Update: {
+          organization_id?: string;
+          tracker_id?: string;
+          bucket?: string;
+          window_start?: string;
+          hits?: number;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -1821,6 +1956,19 @@ export type Database = {
         Returns: { id: string; organization_id: string; label: string; created_by: string | null; expires_at: string }[];
       };
       consume_connect_link: { Args: { p_id: string }; Returns: boolean };
+      record_site_view: {
+        Args: {
+          p_key: string;
+          p_bucket: string;
+          p_visitor: string;
+          p_host: string;
+          p_path: string;
+          p_referrer: string | null;
+          p_consented: boolean;
+          p_message?: string | null;
+        };
+        Returns: string;
+      };
     };
     Enums: {
       member_role: "owner" | "admin" | "member";

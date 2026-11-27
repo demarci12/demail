@@ -89,6 +89,34 @@ export function ipPrefix(ip: string | null): string {
     .join(":");
 }
 
+const LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+// A lowercase public DNS name: two or more labels, a letter-led top-level label, no local-only names.
+export function isPublicHostname(s: string): boolean {
+  if (typeof s !== "string" || s.length === 0 || s.length > 253) return false;
+  if (s === "localhost" || [".local", ".internal", ".localhost", ".lan"].some((t) => s.endsWith(t))) return false;
+  const labels = s.split(".");
+  if (labels.length < 2 || !labels.every((l) => LABEL_RE.test(l))) return false;
+  return /^[a-z]/.test(labels[labels.length - 1]);
+}
+// Accepts "Shop.Example.com", "https://shop.example.com/" and the like; null unless the result is a public hostname.
+export function normalizeHostname(raw: unknown): string | null {
+  let s = cleanText(raw, 300).toLowerCase();
+  s = s.replace(/^https?:\/\//, "");
+  s = s.replace(/[/?#].*$/, "");
+  if (s.endsWith(".")) s = s.slice(0, -1);
+  return isPublicHostname(s) ? s : null;
+}
+// True when host is one of the domains or a subdomain of one.
+export function hostMatches(host: string, domains: readonly string[]): boolean {
+  return domains.some((d) => host === d || host.endsWith(`.${d}`));
+}
+// A page path without query string or fragment, at most 300 characters; null unless it starts with "/".
+export function cleanPath(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const cut = raw.split(/[?#]/, 1)[0];
+  const s = cleanText(cut, 300);
+  return s.startsWith("/") ? s : null;
+}
 export const FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "checkbox"] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 export const FIELD_TYPE_LABELS: Record<FieldType, string> = {

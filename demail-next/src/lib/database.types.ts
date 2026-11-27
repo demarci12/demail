@@ -1817,6 +1817,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      portal_domains: {
+        Row: {
+          organization_id: string;
+          hostname: string;
+          verify_token: string;
+          verified_at: string | null;
+          last_checked_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          hostname: string;
+          verify_token?: string;
+          verified_at?: string | null;
+          last_checked_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          hostname?: string;
+          verify_token?: string;
+          verified_at?: string | null;
+          last_checked_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: {

@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
-import { publicEnv } from "@/lib/env";
+import { publicOrigin } from "@/lib/portal";
 import { safeNext } from "@/lib/org";
 
 const credentials = z.object({ email: z.string().trim().email(), password: z.string().min(8).max(200) });
@@ -30,7 +30,7 @@ export async function signup(formData: FormData) {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     ...parsed.data,
-    options: { emailRedirectTo: `${publicEnv().NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(next)}` },
+    options: { emailRedirectTo: `${await publicOrigin()}/auth/callback?next=${encodeURIComponent(next)}` },
   });
   if (error) back("/signup", next, error.message);
   if (data.session) redirect(next === "/app" ? "/onboarding" : next);

@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentPortal } from "@/lib/portal";
 
-export default function Home() {
+export default async function Home() {
+  if (await currentPortal()) redirect("/login");
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-4 p-10">
       <h1 className="text-2xl font-semibold">Demail</h1>

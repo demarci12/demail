@@ -3,8 +3,13 @@ import { getOrgContext } from "@/lib/org";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
-import { removeBranding, saveBranding } from "./actions";
+import { appHost } from "@/lib/portal";
+import { addPortalDomain, checkPortalDomain, removeBranding, removePortalDomain, saveBranding } from "./actions";
 const HEX_RE = /^#[0-9a-f]{6}$/;
+const utc = (at: string) => `${new Date(at).toISOString().replace("T", " ").slice(0, 16)} UTC`;
+function Code({ children }: { children: string }) {
+  return <code className="block select-all break-all rounded-md bg-slate-100 p-2 text-xs">{children}</code>;
+}
 export default async function BrandingPage({ searchParams }: { searchParams: Promise<{ error?: string; msg?: string }> }) {
   const { error, msg } = await searchParams;
   const { supabase, org, canManage } = await getOrgContext();
@@ -33,6 +38,8 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
     );
   }
   const { data: brand } = await supabase.from("org_branding").select("*").eq("organization_id", org.id).maybeSingle();
+  const { data: portal, error: portalError } = await supabase.from("portal_domains").select("*").eq("organization_id", org.id).maybeSingle();
+  const mainHost = appHost();
   const accent = brand && HEX_RE.test(brand.accent_color) ? brand.accent_color : "#0284c7";
   const readOnly = !canManage;
   return (
@@ -91,6 +98,70 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
               Remove branding
             </Button>
           </form>
+        )}
+      </Card>
+      <Card className="flex flex-col gap-3 text-sm">
+        <h2 className="text-base font-semibold">Custom domain</h2>
+        <p>
+          Give your clients a sign-in page on a hostname of your own, such as portal.youragency.com. On a verified hostname the sign-in and sign-up
+          pages show your logo, name, accent color and legal links, and the dashboard works there too. Links in email, invitations, connect links and
+          forms keep the main address {mainHost}, and Google and Microsoft mailboxes are connected from there.
+        </p>
+        {portalError ? (
+          <Alert>Could not load the custom domain.</Alert>
+        ) : !portal ? (
+          readOnly ? (
+            <p className="text-slate-600">No custom domain. Only owners and admins can add one.</p>
+          ) : (
+            <form action={addPortalDomain} className="flex flex-col gap-3">
+              <Field label="Hostname">
+                <Input name="hostname" required maxLength={253} placeholder="portal.youragency.com" />
+              </Field>
+              <div>
+                <Button type="submit">Add custom domain</Button>
+              </div>
+            </form>
+          )
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p>
+              <span className="font-medium text-slate-900">{portal.hostname}</span>{" "}
+              {portal.verified_at ? (
+                <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">Verified</span>
+              ) : (
+                <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">Waiting for DNS</span>
+              )}
+              <span className="ml-2 text-xs text-slate-500">{portal.last_checked_at ? `Last checked ${utc(portal.last_checked_at)}` : "Not checked yet"}</span>
+            </p>
+            <ol className="flex list-decimal flex-col gap-2 pl-5 text-slate-700">
+              <li className="flex flex-col gap-1">
+                <span>At your DNS provider, publish a TXT record with this name and value.</span>
+                <Code>{`_demail.${portal.hostname}`}</Code>
+                <Code>{`demail-verify=${portal.verify_token}`}</Code>
+              </li>
+              <li>
+                Ask the operator of this instance to add {portal.hostname} to the hosting project. On Vercel that is Project Settings, Domains: the
+                operator adds the hostname, you publish the DNS record Vercel shows for it, and Vercel issues the certificate.
+              </li>
+              <li className="flex flex-col gap-1">
+                <span>The operator adds this address to Supabase Auth, URL Configuration, Redirect URLs, so sign-up confirmations return to it.</span>
+                <Code>{`https://${portal.hostname}/auth/callback`}</Code>
+              </li>
+              <li>Press Check now. Keep the TXT record published: a daily recheck turns the domain off when the record is gone.</li>
+            </ol>
+            {!readOnly && (
+              <div className="flex flex-wrap gap-2">
+                <form action={checkPortalDomain}>
+                  <Button type="submit">Check now</Button>
+                </form>
+                <form action={removePortalDomain}>
+                  <Button type="submit" variant="secondary">
+                    Remove custom domain
+                  </Button>
+                </form>
+              </div>
+            )}
+          </div>
         )}
       </Card>
     </div>

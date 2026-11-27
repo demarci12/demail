@@ -2,6 +2,9 @@ import Link from "next/link";
 import { Alert, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
+import { BrandFooter, BrandLogo } from "@/components/public-brand";
+import type { Branding } from "@/lib/branding";
+const HEX_RE = /^#[0-9a-f]{6}$/;
 
 export function AuthForm({
   mode,
@@ -9,19 +12,24 @@ export function AuthForm({
   error,
   message,
   next,
+  brand = null,
 }: {
   mode: "login" | "signup";
   action: (formData: FormData) => Promise<void>;
   error?: string;
   message?: string;
   next: string;
+  brand?: Branding | null;
 }) {
   const login = mode === "login";
+  const name = brand?.brand_name ?? "Demail";
+  const buttonStyle = brand && HEX_RE.test(brand.accent_color) ? { backgroundColor: brand.accent_color } : undefined;
   const suffix = next !== "/app" ? `?next=${encodeURIComponent(next)}` : "";
   return (
     <main className="mx-auto mt-24 max-w-sm px-4">
       <Card className="flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">{login ? "Sign in to Demail" : "Create your Demail account"}</h1>
+        <BrandLogo brand={brand} />
+        <h1 className="text-xl font-semibold">{login ? `Sign in to ${name}` : `Create your ${name} account`}</h1>
         {error && <Alert>{error}</Alert>}
         {message && <Alert tone="info">{message}</Alert>}
         <form action={action} className="flex flex-col gap-3">
@@ -32,7 +40,9 @@ export function AuthForm({
           <Field label="Password">
             <Input name="password" type="password" required minLength={8} autoComplete={login ? "current-password" : "new-password"} />
           </Field>
-          <Button type="submit">{login ? "Sign in" : "Sign up"}</Button>
+          <Button type="submit" style={buttonStyle}>
+            {login ? "Sign in" : "Sign up"}
+          </Button>
         </form>
         <p className="text-sm text-slate-600">
           {login ? "No account yet? " : "Already have an account? "}
@@ -41,6 +51,7 @@ export function AuthForm({
           </Link>
         </p>
       </Card>
+      {brand && <BrandFooter brand={brand} />}
     </main>
   );
 }

@@ -2,11 +2,17 @@ import { randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getOrgContext } from "@/lib/org";
 import { oauthProviders, publicEnv } from "@/lib/env";
+import { appHost, currentPortal, publicOrigin } from "@/lib/portal";
 import { seal } from "@/lib/crypto/secretbox";
 import { OAUTH_COOKIE, authorizeUrl, isProvider, newPkce } from "@/lib/mail/oauth";
 const back = (message: string) => NextResponse.redirect(new URL("/app/mailboxes?error=" + encodeURIComponent(message), publicEnv().NEXT_PUBLIC_APP_URL));
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
+  // Providers return only to the registered redirect URI on the main address.
+  if (await currentPortal()) {
+    const message = `Connect Google and Microsoft mailboxes from ${appHost()}, where the provider sends you back.`;
+    return NextResponse.redirect(new URL("/app/mailboxes?error=" + encodeURIComponent(message), await publicOrigin()));
+  }
   const { user, org, canManage } = await getOrgContext();
   if (!isProvider(provider) || !oauthProviders()[provider]) return back("That provider is not configured on this instance.");
   if (!canManage) return back("Only owners and admins can connect mailboxes.");

@@ -38,6 +38,11 @@ async function cname(name: string): Promise<string[] | null> {
   }
 }
 
+// True when _demail.<hostname> publishes the exact verification value; a failed lookup counts as missing.
+export async function checkPortalTxt(hostname: string, token: string): Promise<boolean> {
+  const records = await txt(`_demail.${hostname}`);
+  return (records ?? []).some((r) => r.trim() === `demail-verify=${token}`);
+}
 export function dkimSelectors(providerHint: ProviderHint, userSelector: string | null): string[] {
   const base = providerHint === "google" ? ["google"] : providerHint === "microsoft" ? ["selector1", "selector2"] : providerHint === "resend" ? ["resend"] : ["google", "selector1", "selector2", "resend"];
   return [...new Set([...(userSelector ? [userSelector] : []), ...base])];

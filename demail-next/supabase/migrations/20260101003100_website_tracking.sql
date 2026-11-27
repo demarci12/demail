@@ -124,14 +124,25 @@ begin
   if not found then
     return 'unknown';
   end if;
+  if p_bucket is null or char_length(p_bucket) not between 1 and 100 then
+    return 'invalid';
+  end if;
+  -- Every request for a known key counts toward the hourly limit, refused ones included.
+  insert into public.site_rate_buckets (organization_id, tracker_id, bucket, window_start)
+  values (v_tracker.organization_id, v_tracker.id, p_bucket, date_trunc('hour', now()))
+  on conflict (tracker_id, bucket, window_start) do update set hits = public.site_rate_buckets.hits + 1
+  returning hits into v_hits;
+  delete from public.site_rate_buckets where tracker_id = v_tracker.id and window_start < now() - interval '1 day';
+  if v_hits > 120 then
+    return 'rate_limited';
+  end if;
   if not v_tracker.enabled then
     return 'disabled';
   end if;
   if p_visitor is null
     or p_host is null or p_host !~ '^[a-z0-9.-]{1,253}$'
     or p_path is null or char_length(p_path) not between 1 and 300 or left(p_path, 1) <> '/'
-    or (p_referrer is not null and p_referrer !~ '^[a-z0-9.-]{1,253}$')
-    or p_bucket is null or char_length(p_bucket) not between 1 and 100 then
+    or (p_referrer is not null and p_referrer !~ '^[a-z0-9.-]{1,253}$') then
     return 'invalid';
   end if;
   if not exists (
@@ -142,14 +153,6 @@ begin
   end if;
   if v_tracker.consent_mode = 'ask' and not coalesce(p_consented, false) then
     return 'consent';
-  end if;
-  insert into public.site_rate_buckets (organization_id, tracker_id, bucket, window_start)
-  values (v_tracker.organization_id, v_tracker.id, p_bucket, date_trunc('hour', now()))
-  on conflict (tracker_id, bucket, window_start) do update set hits = public.site_rate_buckets.hits + 1
-  returning hits into v_hits;
-  delete from public.site_rate_buckets where tracker_id = v_tracker.id and window_start < now() - interval '1 day';
-  if v_hits > 120 then
-    return 'rate_limited';
   end if;
   select count(*) into v_today from public.site_page_views
   where tracker_id = v_tracker.id and created_at >= (date_trunc('day', now() at time zone 'utc') at time zone 'utc');

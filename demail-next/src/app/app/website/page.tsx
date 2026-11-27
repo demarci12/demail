@@ -60,7 +60,9 @@ export default async function WebsitePage({ searchParams }: { searchParams: Prom
       <Card className="flex flex-col gap-3 text-sm">
         <p className="text-slate-600">
           A tracker records which pages of your site people visit. Visits stay anonymous until someone arrives from a tracked link in your email, and then they show on
-          that contact. No IP address, user agent or cookie is stored, and browsers that send Global Privacy Control are never recorded.
+          that contact. No IP address or user agent is stored and no cookie is set. The snippet keeps a random visitor id (demail_vid) in the site&apos;s
+          localStorage from the first recorded view, which in record mode is the first page load, and browsers that send Global Privacy Control are
+          never recorded.
         </p>
         {canManage && list.length < 5 && (
           <form action={createTracker} className="flex flex-col gap-3">

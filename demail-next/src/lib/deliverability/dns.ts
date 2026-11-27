@@ -38,10 +38,16 @@ async function cname(name: string): Promise<string[] | null> {
   }
 }
 
-// True when _demail.<hostname> publishes the exact verification value; a failed lookup counts as missing.
-export async function checkPortalTxt(hostname: string, token: string): Promise<boolean> {
-  const records = await txt(`_demail.${hostname}`);
-  return (records ?? []).some((r) => r.trim() === `demail-verify=${token}`);
+// Only a name with no TXT answer counts as missing; a timeout or resolver error is "error" so callers keep the current state.
+export async function checkPortalTxt(hostname: string, token: string): Promise<"found" | "missing" | "error"> {
+  let records: string[];
+  try {
+    records = (await withTimeout(resolveTxt(`_demail.${hostname}`))).map((chunks) => chunks.join(""));
+  } catch (e) {
+    const code = (e as { code?: unknown }).code;
+    return code === "ENODATA" || code === "ENOTFOUND" ? "missing" : "error";
+  }
+  return records.some((r) => r.trim() === `demail-verify=${token}`) ? "found" : "missing";
 }
 export function dkimSelectors(providerHint: ProviderHint, userSelector: string | null): string[] {
   const base = providerHint === "google" ? ["google"] : providerHint === "microsoft" ? ["selector1", "selector2"] : providerHint === "resend" ? ["resend"] : ["google", "selector1", "selector2", "resend"];

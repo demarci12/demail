@@ -144,10 +144,17 @@ export default async function BrandingPage({ searchParams }: { searchParams: Pro
                 operator adds the hostname, you publish the DNS record Vercel shows for it, and Vercel issues the certificate.
               </li>
               <li className="flex flex-col gap-1">
-                <span>The operator adds this address to Supabase Auth, URL Configuration, Redirect URLs, so sign-up confirmations return to it.</span>
+                <span>
+                  The operator adds this address to Supabase Auth, URL Configuration, Redirect URLs, so sign-up confirmations return to it. Supabase
+                  Auth then sends sign-in and recovery links for any user of this instance to it on request, so the operator adds it only for an
+                  agency trusted with that, and removes it together with the hosting domain when this domain is removed or stops verifying.
+                </span>
                 <Code>{`https://${portal.hostname}/auth/callback`}</Code>
               </li>
-              <li>Press Check now. Keep the TXT record published: a daily recheck turns the domain off when the record is gone.</li>
+              <li>
+                Press Check now. Keep the TXT record published: a daily recheck turns the domain off when the record is gone. A DNS lookup that
+                fails or times out keeps the current state.
+              </li>
             </ol>
             {!readOnly && (
               <div className="flex flex-wrap gap-2">

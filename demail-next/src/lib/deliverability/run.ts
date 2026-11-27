@@ -6,7 +6,7 @@ import { checkDomain, checkPortalTxt, type ProviderHint } from "./dns";
 type Admin = ReturnType<typeof createAdminClient>;
 type Domain = Database["public"]["Tables"]["sending_domains"]["Row"];
 type Portal = Database["public"]["Tables"]["portal_domains"]["Row"];
-export type PortalCheck = "verified" | "missing" | "taken";
+export type PortalCheck = "verified" | "missing" | "taken" | "unreachable";
 
 const BATCH = 20;
 const STALE_MS = 24 * 3_600_000;
@@ -30,8 +30,15 @@ export async function checkAndStore(admin: Admin, d: Pick<Domain, "id" | "organi
 
 // Checks one portal domain's TXT record; a hostname another agency already verified stays unverified here.
 export async function checkAndStorePortal(admin: Admin, row: Pick<Portal, "organization_id" | "hostname" | "verify_token" | "verified_at">): Promise<PortalCheck> {
-  const found = await checkPortalTxt(row.hostname, row.verify_token);
+  const lookup = await checkPortalTxt(row.hostname, row.verify_token);
   const now = new Date().toISOString();
+  if (lookup === "error") {
+    // A failed lookup keeps the current state and only records the attempt, so Check now stays limited.
+    const { error } = await admin.from("portal_domains").update({ last_checked_at: now }).eq("organization_id", row.organization_id);
+    if (error) throw new Error("could not store the portal domain check");
+    return "unreachable";
+  }
+  const found = lookup === "found";
   const verified_at = found ? (row.verified_at ?? now) : null;
   const { error } = await admin.from("portal_domains").update({ verified_at, last_checked_at: now }).eq("organization_id", row.organization_id);
   if (!error) return found ? "verified" : "missing";

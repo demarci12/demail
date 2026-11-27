@@ -82,6 +82,7 @@ export async function checkPortalDomain() {
     return fail("Could not check the custom domain.");
   }
   if (result === "taken") return fail("Another agency already verified this hostname.");
+  if (result === "unreachable") return fail(`Could not look up _demail.${row.hostname} right now. The domain keeps its current state; try again shortly.`);
   if (result === "missing") return fail(`The TXT record at _demail.${row.hostname} was not found yet. DNS changes can take a while to appear.`);
   return done("Custom domain verified.");
 }
@@ -89,5 +90,5 @@ export async function removePortalDomain() {
   const { supabase, org } = await manager();
   const { error } = await supabase.from("portal_domains").delete().eq("organization_id", org.id);
   if (error) return fail("Could not remove the custom domain.");
-  return done("Custom domain removed.");
+  return done("Custom domain removed. Ask the operator to remove the hostname from the hosting project and from Supabase Auth Redirect URLs.");
 }

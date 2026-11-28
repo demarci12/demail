@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
 import { EMAIL_PATTERN } from "@/lib/csv";
 import type { Json } from "@/lib/database.types";
+import { verifyTargets } from "@/lib/verify/run";
 
 const text = z.string().trim().max(200).optional().transform((v) => v || null);
 const contactSchema = z.object({
@@ -168,4 +169,33 @@ export async function importContacts(rows: unknown): Promise<ImportResult> {
   }
   revalidatePath("/app/contacts");
   return result;
+}
+
+// Verifies the caller's own contacts: the ids are read through RLS first, so another workspace's contact is never touched.
+export async function verifyContacts(ids: string[]): Promise<{ checked: number; invalid: number; error?: string }> {
+  const { supabase, org } = await getOrgContext();
+  const list = z.array(z.string().uuid()).max(100).safeParse(ids);
+  if (!list.success) return { checked: 0, invalid: 0, error: "Could not read the contact list." };
+  const { data } = await supabase.from("contacts").select("id, organization_id, email").eq("organization_id", org.id).in("id", list.data);
+  try {
+    const out = await verifyTargets(data ?? []);
+    revalidatePath("/app/contacts");
+    return out;
+  } catch {
+    return { checked: 0, invalid: 0, error: "Verification failed. Try again." };
+  }
+}
+
+// Verifies the next slice of this workspace's contacts that have no result yet; the import page calls it until none remain.
+export async function verifyPendingContacts(): Promise<{ checked: number; invalid: number; remaining: number; error?: string }> {
+  const { supabase, org } = await getOrgContext();
+  const { data } = await supabase.from("contacts").select("id, organization_id, email").eq("organization_id", org.id).is("verify_status", null).order("created_at").limit(50);
+  try {
+    const out = await verifyTargets(data ?? []);
+    const { count } = await supabase.from("contacts").select("id", { count: "exact", head: true }).eq("organization_id", org.id).is("verify_status", null);
+    revalidatePath("/app/contacts");
+    return { ...out, remaining: count ?? 0 };
+  } catch {
+    return { checked: 0, invalid: 0, remaining: 0, error: "Verification failed. Try again." };
+  }
 }

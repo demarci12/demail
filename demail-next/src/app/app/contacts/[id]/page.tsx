@@ -5,7 +5,8 @@ import { cleanText } from "@/lib/input";
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ContactFields } from "../fields";
-import { createLabel, deleteContact, setContactLabel, updateContact } from "../actions";
+import { createLabel, deleteContact, setContactLabel, updateContact, verifyContacts } from "../actions";
+import { VerifyBadge } from "../verify-badge";
 
 export default async function ContactPage({
   params,
@@ -61,6 +62,19 @@ export default async function ContactPage({
       <PageHeader title={contact.email} actions={<Link href="/app/contacts" className="text-sm text-sky-700">Back to contacts</Link>} />
       {sp.error && <Alert>{sp.error}</Alert>}
       {sp.saved && <Alert tone="info">Saved.</Alert>}
+      <Card className="flex items-center justify-between gap-3">
+        <VerifyBadge status={contact.verify_status} reason={contact.verify_reason} suggestion={contact.verify_suggestion} flags={contact.verify_flags} verifiedAt={contact.verified_at} />
+        <form
+          action={async () => {
+            "use server";
+            await verifyContacts([id]);
+          }}
+        >
+          <Button type="submit" variant="secondary">
+            {contact.verify_status ? "Verify again" : "Verify now"}
+          </Button>
+        </form>
+      </Card>
       {!contact.subscribed && <Alert tone="info">This contact is unsubscribed and will not receive campaign email.</Alert>}
       {crmLink && (
         <p className="text-sm text-slate-600">

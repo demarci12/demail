@@ -106,6 +106,11 @@ export type Database = {
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          verify_status: string | null;
+          verify_reason: string | null;
+          verify_suggestion: string | null;
+          verify_flags: string[];
+          verified_at: string | null;
         };
         Insert: {
           id?: string;
@@ -120,6 +125,11 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          verify_status?: string | null;
+          verify_reason?: string | null;
+          verify_suggestion?: string | null;
+          verify_flags?: string[];
+          verified_at?: string | null;
         };
         Update: {
           id?: string;
@@ -134,6 +144,11 @@ export type Database = {
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          verify_status?: string | null;
+          verify_reason?: string | null;
+          verify_suggestion?: string | null;
+          verify_flags?: string[];
+          verified_at?: string | null;
         };
         Relationships: [];
       };
@@ -1926,6 +1941,8 @@ export type Database = {
         Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
       };
       record_cron_heartbeat: { Args: { p_job: string; p_ok: boolean; p_ms: number }; Returns: undefined };
+      contacts_to_verify: { Args: { p_limit: number }; Returns: { id: string; organization_id: string; email: string }[] };
+      set_contact_verification: { Args: { p_org: string; p_results: Json }; Returns: number };
       decide_branch: { Args: { p_enrollment: string; p_step: string }; Returns: boolean };
       claim_due_mailbox_syncs: {
         Args: { batch: number; p_org?: string | null };

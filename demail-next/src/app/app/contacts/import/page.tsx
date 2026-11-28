@@ -4,7 +4,7 @@ import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { applyMapping, CONTACT_FIELDS, guessTarget, parseCsv, type ColumnTarget } from "@/lib/csv";
-import { importContacts, type ImportResult } from "../actions";
+import { importContacts, verifyPendingContacts, type ImportResult } from "../actions";
 
 const LABELS: Record<ColumnTarget, string> = {
   email: "Email",
@@ -23,6 +23,7 @@ export default function ImportPage() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [verify, setVerify] = useState<{ checked: number; invalid: number; remaining: number } | null>(null);
 
   async function onFile(file: File | undefined) {
     setResult(null);
@@ -58,6 +59,16 @@ export default function ImportPage() {
       }
     }
     setResult(total);
+    // Check the new addresses (syntax, mail server, disposable) in slices until none are left or a slice fails.
+    const seen = { checked: 0, invalid: 0, remaining: 1 };
+    while (seen.remaining > 0) {
+      const part = await verifyPendingContacts();
+      if (part.error || part.checked === 0) break;
+      seen.checked += part.checked;
+      seen.invalid += part.invalid;
+      seen.remaining = part.remaining;
+      setVerify({ ...seen });
+    }
     setBusy(false);
   }
 
@@ -93,6 +104,11 @@ export default function ImportPage() {
       {result && (
         <Alert tone="info">
           Created {result.created}, updated {result.updated}, skipped {result.skipped}, invalid {result.invalid}.
+        </Alert>
+      )}
+      {verify && (
+        <Alert tone="info">
+          Checked {verify.checked} addresses, {verify.invalid} invalid{verify.remaining > 0 ? `, ${verify.remaining} still to check` : ""}. Invalid addresses are never enrolled in a campaign.
         </Alert>
       )}
     </div>

@@ -41,7 +41,7 @@ Next: Phase 5 part 6.
 ## Phase 5: data, AI and channels
 
 - AI writing, reply drafts and classification (bring your own key).
-- Email verification and waterfall enrichment through provider adapters.
+- Built-in email verification shipped (syntax, MX, disposable, role and typo checks; no SMTP probe). Provider adapters and waterfall enrichment are still open.
 - Lead finder, CRM sync, forms and website tracking.
 - LinkedIn and other channels through adapters, agencies and white-label.
 - Hungarian and English localization.

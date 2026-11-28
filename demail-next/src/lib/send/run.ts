@@ -235,6 +235,12 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       result.stopped++;
       continue;
     }
+    if (contact.verify_status === "invalid") {
+      await logMessage(e, step, null, "skipped", { error: "Invalid email address" });
+      await update(e, { status: "stopped", next_send_at: null, error: "Invalid email address" });
+      result.stopped++;
+      continue;
+    }
     if (!step) {
       await update(e, { status: "completed", next_send_at: null });
       result.completed++;

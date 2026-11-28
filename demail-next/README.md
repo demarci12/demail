@@ -18,6 +18,7 @@ Demail is an open-source cold outreach tool that runs on free tiers: Next.js on 
 - Deliverability: health bands, bounce and complaint events, SPF, DKIM and DMARC checks.
 - Warmup between your own Google and Microsoft mailboxes: a daily ramp, workday scheduling, human-delay replies, placement checks and an optional filter tag.
 - A/B/Z variants for email steps, split evenly per enrollment, with results per variant.
+- Condition steps in campaigns: branch on opened, clicked, replied or visited site, end a path, with each decision kept per contact.
 - Campaign analytics by step, by variant and by mailbox: sent, opened, clicked, replied and bounced.
 - A pre-launch review of senders, blank merge fields and unsubscribed or suppressed enrollments.
 - Test sends of a saved step or variant to your own address.
@@ -176,9 +177,19 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Reply attribution.** A thread's first reply is credited to the last campaign message sent to that contact at or before the reply. Only Google and Microsoft mailboxes report replies, so Resend senders show none.
 - **Bounce attribution.** Bounces come from `delivery_events` matched to a sent message.
 - **Opens.** Open counts remain an estimate, for the reasons in Open and click tracking.
+## Conditions
+- **What a condition checks.** Opened: a counted open or click on mail of this campaign to the contact. Clicked: a counted click on mail of this campaign. Replied: a human reply in a thread of this campaign and contact (auto replies and bounces do not count). Visited site: a stored page view of a visitor linked to the contact, optionally on one tracker and under a path prefix such as `/pricing`. Every condition only looks at what happened since the contact was enrolled.
+- **Checked once.** A condition is checked when the contact reaches it and the answer is recorded for that contact and step, so a retry or a second tick always takes the same path. Nothing is sent at a condition step. Put a wait step before a condition so there is time to open, click, reply or visit.
+- **Targets.** Yes and No each continue with the next step, end the sequence or go to a later step. Targets only move forward, so every contact sees each step at most once and every sequence ends. Saves, moves, deletes and launches that would send a condition backwards are refused. An End of path step ends the sequence (or jumps to a later step) for everyone who reaches it, which is how two paths are kept apart.
+- **Timing.** The contact moves to its target on the next scheduler tick, up to a minute after the condition. A target that is missing or was deleted ends the sequence instead of sending.
+- **Stop on reply.** Campaign settings have Stop on reply, on by default and on for every existing campaign. While it is on, a reply stops the sequence before a Replied condition is reached, so turn it off to branch on replies. Only Google and Microsoft senders see replies.
+- **Website data.** Visited site only sees views the tracker's consent mode allowed and its retention still keeps, so it never sees more than the Website page does.
+- **Results.** The campaign page shows Yes and No counts on each condition.
+- **Existing campaigns.** A campaign without conditions runs exactly as before.
+- **Rollback.** After a rollback to the previous release, campaigns with conditions wait and send nothing until the upgrade returns; campaigns without conditions keep sending. Do not edit condition steps on the previous release.
 ## Pre-launch review and test sends
 - **Review.** Open Review on a campaign (`/app/campaigns/<id>/review`). It lists the email step count, active enrollments, and each sender with its status and health band, flagging no sender, a disconnected or paused mailbox, and a throttled or paused band. For each email step and variant it lists enrolled contacts with no value for a merge field that has no fallback (up to 20, with the total), and it lists enrolled contacts who are unsubscribed or suppressed.
-- **It does not block launch.** Launch still checks only for an email step and a sender. When its turn comes, an enrollment with a blank merge field fails and an unsubscribed or suppressed one is skipped, as before.
+- **It does not block launch.** Launch checks only for an email step, a sender and conditions that move forward. When its turn comes, an enrollment with a blank merge field fails and an unsubscribed or suppressed one is skipped, as before.
 - **Test sends.** Each email step has Send test. It renders the step or chosen variant against the same sample contact as the preview and sends it from the mailbox you pick, only to your own sign-in address, with the subject starting `[Test]`.
 - **What a test is not.** A test has no open or click tracking, is not stored as a campaign message and does not count in the results. Its unsubscribe links point at a placeholder that changes nothing. Tests are not counted in `INSTANCE_DAILY_SEND_CAP`, but tests from a Resend sender do count toward Resend's own daily quota. Two identical clicks within the same minute send once through Resend; changing the mailbox, subject or body sends again.
 ## AI (bring your own key)
@@ -331,6 +342,7 @@ If the key is lost and there is no previous key, stored tokens cannot be opened 
 - After a rollback to the release before agencies, agency staff keep database access to client rows, but the switcher lists only direct memberships and branding is not shown until you upgrade again.
 - An agency send pool or client send cap can be overshot by at most one send batch when two scheduler ticks overlap.
 - A custom portal domain needs the operator to add each hostname to the hosting project and to Supabase Auth Redirect URLs by hand. Sessions do not carry over between the portal hostname and the main address, Google and Microsoft mailboxes are connected from the main address only, and Supabase Auth emails are not branded.
+- A condition is checked once, when the contact reaches it, and its targets only move forward, so a sequence cannot loop back or re-check a condition later.
 - Migrations were checked against an in-memory Postgres, not a live Supabase project. The `schedule.sql` extensions run for the first time in your project.
 
 ## License

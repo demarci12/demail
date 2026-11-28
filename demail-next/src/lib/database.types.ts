@@ -332,6 +332,13 @@ export type Database = {
           body_plain: string | null;
           body_html: string | null;
           wait_seconds: number | null;
+          branch_condition: string | null;
+          branch_tracker_id: string | null;
+          branch_path: string | null;
+          yes_action: string | null;
+          yes_step_id: string | null;
+          no_action: string | null;
+          no_step_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -346,6 +353,13 @@ export type Database = {
           body_plain?: string | null;
           body_html?: string | null;
           wait_seconds?: number | null;
+          branch_condition?: string | null;
+          branch_tracker_id?: string | null;
+          branch_path?: string | null;
+          yes_action?: string | null;
+          yes_step_id?: string | null;
+          no_action?: string | null;
+          no_step_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -360,8 +374,42 @@ export type Database = {
           body_plain?: string | null;
           body_html?: string | null;
           wait_seconds?: number | null;
+          branch_condition?: string | null;
+          branch_tracker_id?: string | null;
+          branch_path?: string | null;
+          yes_action?: string | null;
+          yes_step_id?: string | null;
+          no_action?: string | null;
+          no_step_id?: string | null;
           created_at?: string;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      campaign_branch_results: {
+        Row: {
+          enrollment_id: string;
+          step_id: string;
+          organization_id: string;
+          campaign_id: string;
+          outcome: boolean;
+          decided_at: string;
+        };
+        Insert: {
+          enrollment_id: string;
+          step_id: string;
+          organization_id: string;
+          campaign_id: string;
+          outcome: boolean;
+          decided_at?: string;
+        };
+        Update: {
+          enrollment_id?: string;
+          step_id?: string;
+          organization_id?: string;
+          campaign_id?: string;
+          outcome?: boolean;
+          decided_at?: string;
         };
         Relationships: [];
       };
@@ -1858,6 +1906,11 @@ export type Database = {
         Args: { batch: number };
         Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
       };
+      claim_send_batch: {
+        Args: { batch: number };
+        Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
+      };
+      decide_branch: { Args: { p_enrollment: string; p_step: string }; Returns: boolean };
       claim_due_mailbox_syncs: {
         Args: { batch: number; p_org?: string | null };
         Returns: Database["public"]["Tables"]["mailbox_sync_state"]["Row"][];
@@ -2007,7 +2060,7 @@ export type Database = {
       member_role: "owner" | "admin" | "member";
       mailbox_status: "active" | "paused" | "disconnected";
       campaign_status: "draft" | "active" | "paused" | "completed";
-      step_type: "email" | "wait";
+      step_type: "email" | "wait" | "branch";
       enrollment_status: "active" | "completed" | "stopped" | "failed";
       message_status: "queued" | "sent" | "failed" | "skipped";
     };

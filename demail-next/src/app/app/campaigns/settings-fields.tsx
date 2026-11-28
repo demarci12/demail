@@ -1,6 +1,6 @@
 import { Field, Input } from "@/components/ui/input";
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-type Values = { name?: string; timezone?: string; send_days?: number; send_start?: string; send_end?: string; track_opens?: boolean; track_clicks?: boolean };
+type Values = { name?: string; timezone?: string; send_days?: number; send_start?: string; send_end?: string; track_opens?: boolean; track_clicks?: boolean; stop_on_reply?: boolean };
 export function CampaignFields({ values = {} }: { values?: Values }) {
   const days = values.send_days ?? 62;
   return (
@@ -37,6 +37,11 @@ export function CampaignFields({ values = {} }: { values?: Values }) {
           Track clicks
         </label>
         <p className="text-xs text-slate-500">Tracking is optional. Click tracking rewrites links, which can affect deliverability.</p>
+        <label className="mt-2 flex items-center gap-2">
+          <input type="checkbox" name="stop_on_reply" defaultChecked={values.stop_on_reply ?? true} />
+          Stop on reply
+        </label>
+        <p className="text-xs text-slate-500">A reply from the contact stops their sequence. Turn it off to branch on replies.</p>
       </div>
     </>
   );

@@ -10,6 +10,9 @@ import { sendStepTest } from "@/lib/send/test-send";
 import { aiCall, aiErrorMessage } from "@/lib/ai/run";
 import { stepDraftMessages } from "@/lib/ai/prompts";
 import { parseStepDraft } from "@/lib/ai/shared";
+import { cleanPath } from "@/lib/input";
+import type { Database } from "@/lib/database.types";
+import { BRANCH_ACTIONS, BRANCH_CONDITIONS, graphProblems, type BranchAction, type BranchCondition } from "@/lib/send/branch";
 const uuid = z.string().uuid();
 function back(id: string, key: "error" | "msg", message: string): never {
   return redirect(`/app/campaigns/${id}?${key}=${encodeURIComponent(message)}`);
@@ -23,6 +26,7 @@ const settingsSchema = z
     send_end: z.string().regex(/^\d{2}:\d{2}$/),
     track_opens: z.boolean(),
     track_clicks: z.boolean(),
+    stop_on_reply: z.boolean(),
   })
   .refine((v) => v.send_end > v.send_start, "end")
   .refine((v) => {
@@ -43,6 +47,7 @@ function settings(formData: FormData) {
     send_end: formData.get("send_end"),
     track_opens: formData.get("track_opens") === "on",
     track_clicks: formData.get("track_clicks") === "on",
+    stop_on_reply: formData.get("stop_on_reply") === "on",
   });
 }
 export async function createCampaign(formData: FormData) {
@@ -83,12 +88,15 @@ export async function saveSenders(id: string, formData: FormData) {
 }
 export async function launchCampaign(id: string) {
   const { supabase, org } = await editableCampaign(id);
-  const [{ count: emailSteps }, { count: senders }] = await Promise.all([
+  const [{ count: emailSteps }, { count: senders }, { data: allSteps }] = await Promise.all([
     supabase.from("campaign_steps").select("id", { count: "exact", head: true }).eq("campaign_id", id).eq("organization_id", org.id).eq("type", "email"),
     supabase.from("campaign_mailboxes").select("mailbox_id", { count: "exact", head: true }).eq("campaign_id", id).eq("organization_id", org.id),
+    supabase.from("campaign_steps").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("position"),
   ]);
   if (!emailSteps) back(id, "error", "Add at least one email step before launching.");
   if (!senders) back(id, "error", "Select at least one sender before launching.");
+  const problems = graphProblems(allSteps ?? []);
+  if (problems.length) back(id, "error", problems[0]);
   await supabase.from("campaigns").update({ status: "active" }).eq("id", id).eq("organization_id", org.id);
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", "Campaign is active.");
@@ -130,7 +138,8 @@ async function stepsEditable(id: string) {
   return ctx;
 }
 type OrgSupabase = Awaited<ReturnType<typeof getOrgContext>>["supabase"];
-async function insertStep(supabase: OrgSupabase, orgId: string, id: string, fields: NonNullable<ReturnType<typeof stepFields>>) {
+type StepInsert = Omit<Database["public"]["Tables"]["campaign_steps"]["Insert"], "campaign_id" | "organization_id" | "position">;
+async function insertStep(supabase: OrgSupabase, orgId: string, id: string, fields: StepInsert) {
   const { data: last } = await supabase.from("campaign_steps").select("position").eq("campaign_id", id).eq("organization_id", orgId).order("position", { ascending: false }).limit(1).maybeSingle();
   const { error } = await supabase.from("campaign_steps").insert({ ...fields, campaign_id: id, organization_id: orgId, position: (last?.position ?? -1) + 1 });
   return error;
@@ -143,6 +152,82 @@ export async function addStep(id: string, type: "email" | "wait", formData: Form
   if (error) back(id, "error", "Could not add the step.");
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", "Step added.");
+}
+type BranchFields = {
+  branch_condition: BranchCondition;
+  branch_tracker_id: string | null;
+  branch_path: string | null;
+  yes_action: BranchAction;
+  yes_step_id: string | null;
+  no_action: BranchAction;
+  no_step_id: string | null;
+};
+const isCondition = (v: string): v is BranchCondition => (BRANCH_CONDITIONS as readonly string[]).includes(v);
+const isAction = (v: string): v is BranchAction => (BRANCH_ACTIONS as readonly string[]).includes(v);
+// Parses a condition form; returns an error message instead of fields when the input is not usable.
+async function branchInput(formData: FormData, supabase: OrgSupabase, orgId: string): Promise<BranchFields | string> {
+  const condition = String(formData.get("condition") ?? "");
+  if (!isCondition(condition)) return "Pick a condition.";
+  let tracker: string | null = null;
+  let path: string | null = null;
+  if (condition === "visited_site") {
+    const rawTracker = String(formData.get("tracker") ?? "");
+    if (rawTracker) {
+      if (!uuid.safeParse(rawTracker).success) return "Website tracker not found.";
+      const { data } = await supabase.from("site_trackers").select("id").eq("id", rawTracker).eq("organization_id", orgId).maybeSingle();
+      if (!data) return "Website tracker not found.";
+      tracker = data.id;
+    }
+    const rawPath = String(formData.get("path") ?? "").trim();
+    if (rawPath) {
+      path = cleanPath(rawPath);
+      if (!path) return "A path prefix starts with /, for example /pricing.";
+    }
+  }
+  const target = (key: "yes" | "no") => {
+    const action = String(formData.get(`${key}_action`) ?? "");
+    if (!isAction(action)) return null;
+    if (action !== "step") return { action, step: null };
+    const step = String(formData.get(`${key}_step`) ?? "");
+    return uuid.safeParse(step).success ? { action, step } : null;
+  };
+  const yes = target("yes");
+  const no = condition === "always" ? { action: "end" as const, step: null } : target("no");
+  if (!yes || !no) return "Pick where the contact goes after the condition.";
+  return { branch_condition: condition, branch_tracker_id: tracker, branch_path: path, yes_action: yes.action, yes_step_id: yes.step, no_action: no.action, no_step_id: no.step };
+}
+export async function addBranch(id: string, kind: "condition" | "end", formData: FormData) {
+  const { supabase, org } = await stepsEditable(id);
+  let fields: StepInsert;
+  if (kind === "end") {
+    fields = { type: "branch", branch_condition: "always", yes_action: "end", no_action: "end" };
+  } else {
+    const input = await branchInput(formData, supabase, org.id);
+    if (typeof input === "string") return back(id, "error", input);
+    // The new step is last, so nothing later exists to go to yet.
+    if (input.yes_action === "step" || input.no_action === "step") back(id, "error", "Add the condition first, then pick a later step as its target.");
+    fields = { type: "branch", name: null, subject: null, body_plain: null, wait_seconds: null, ...input };
+  }
+  const error = await insertStep(supabase, org.id, id, fields);
+  if (error) back(id, "error", "Could not add the step.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", kind === "end" ? "End of path added." : "Condition added.");
+}
+export async function updateBranch(id: string, stepId: string, formData: FormData) {
+  const { supabase, org } = await stepsEditable(id);
+  if (!uuid.safeParse(stepId).success) back(id, "error", "Step not found.");
+  const { data: steps } = await supabase.from("campaign_steps").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("position");
+  const list = steps ?? [];
+  const current = list.find((s) => s.id === stepId);
+  if (!current || current.type !== "branch") back(id, "error", "Step not found.");
+  const input = await branchInput(formData, supabase, org.id);
+  if (typeof input === "string") return back(id, "error", input);
+  const problems = graphProblems(list.map((s) => (s.id === stepId ? { ...s, ...input } : s)));
+  if (problems.length) back(id, "error", problems[0]);
+  const { error } = await supabase.from("campaign_steps").update(input).eq("id", stepId).eq("campaign_id", id).eq("organization_id", org.id);
+  if (error) back(id, "error", "Could not save the condition.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "Condition saved.");
 }
 const draftSchema = z.object({
   brief: z.string().trim().min(10).max(2000),
@@ -212,7 +297,8 @@ export async function updateStep(id: string, stepId: string, type: "email" | "wa
 }
 export async function deleteStep(id: string, stepId: string) {
   const { supabase, org } = await stepsEditable(id);
-  const { data: steps } = await supabase.from("campaign_steps").select("id, position").eq("campaign_id", id).eq("organization_id", org.id).order("position");
+  const { data: steps } = await supabase.from("campaign_steps").select("id, position, yes_step_id, no_step_id").eq("campaign_id", id).eq("organization_id", org.id).order("position");
+  if ((steps ?? []).some((s) => s.yes_step_id === stepId || s.no_step_id === stepId)) back(id, "error", "A condition goes to this step. Change that condition first.");
   const rest = (steps ?? []).filter((s) => s.id !== stepId);
   await supabase.from("campaign_steps").delete().eq("id", stepId).eq("campaign_id", id).eq("organization_id", org.id);
   // Close the gap in ascending order so each update lands on a free position.
@@ -222,13 +308,20 @@ export async function deleteStep(id: string, stepId: string) {
 }
 export async function moveStep(id: string, stepId: string, direction: "up" | "down") {
   const { supabase, org } = await stepsEditable(id);
-  const { data: steps } = await supabase.from("campaign_steps").select("id, position").eq("campaign_id", id).eq("organization_id", org.id).order("position");
+  const { data: steps } = await supabase
+    .from("campaign_steps")
+    .select("id, position, type, branch_condition, yes_action, yes_step_id, no_action, no_step_id")
+    .eq("campaign_id", id)
+    .eq("organization_id", org.id)
+    .order("position");
   const list = steps ?? [];
   const i = list.findIndex((s) => s.id === stepId);
   const j = direction === "up" ? i - 1 : i + 1;
   if (i < 0 || j < 0 || j >= list.length) back(id, "msg", "Nothing to move.");
   const a = list[i];
   const b = list[j];
+  const swapped = list.map((s) => (s.id === a.id ? { ...s, position: b.position } : s.id === b.id ? { ...s, position: a.position } : s));
+  if (graphProblems(swapped).length) back(id, "error", "That move would send a condition backwards. Change its targets first.");
   // Three updates through a free position, because the unique check runs per statement.
   const temp = list.length + 1000;
   await supabase.from("campaign_steps").update({ position: temp }).eq("id", a.id).eq("organization_id", org.id);

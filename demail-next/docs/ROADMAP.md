@@ -8,8 +8,9 @@ Part 1 shipped:
 - Campaign analytics per step and per mailbox.
 - Test send of a saved step.
 - A pre-launch review of blank merge fields and unsubscribed leads.
+Shipped later:
+- Branching steps on opened, clicked and replied shipped in Phase 5 part 5.
 Still open:
-- Branching steps on opened, clicked and replied. These need a step graph instead of positions.
 - Subsequences.
 - Attachments, which need Storage, size limits under the Vercel body limit and MIME parts for three providers.
 - Promoting a winning variant automatically.
@@ -132,6 +133,19 @@ Part 4 upgrade order: apply `20260101003100_website_tracking.sql`, then `2026010
 Part 5 plan:
 - Multi-page forms, more themes, focus mode, a redirect after submit, file fields, submission notifications and double opt-in.
 - The "visited site" condition, which needs branching steps (still open in Phase 2); the visit data it will read ships in Part 4.
+Part 5 shipped:
+- Condition steps in campaigns: opened, clicked, replied and visited site, with an end of path step, forward-only targets and decisions kept per contact.
+Part 5 decisions:
+- **Scope split.** Part 5 ships condition steps in campaigns (closing the Phase 2 branching item and delivering the visited site condition) and the forms extras that need no mail and no storage: multi-page forms, focus mode, three themes and an optional redirect after submit. File fields, submission notifications and double opt-in move to Part 6 plan, because they need Storage with public uploads from strangers, or send mail from the instance to addresses typed by strangers and need a sender, quota and abuse design of their own. Subsequences and automatic winner promotion stay open in Phase 2.
+- **Step model.** A condition is a step row (`campaign_steps.type = 'branch'`), so positions still order the sequence. Its columns are `branch_condition` (`opened`, `clicked`, `replied`, `visited_site`, `always`), `branch_tracker_id` (visited site only, null means any tracker of the workspace), `branch_path` (visited site only, a path prefix such as `/pricing`), `yes_action` and `no_action` (`next`, `end`, `step`) and `yes_step_id` and `no_step_id`. End of path in the UI is `always` with `yes_action = 'end'` (or a later step when edited); its `no_action` is stored as `end` and never used.
+- **Forward only.** A `step` target must be a step of the same campaign (composite foreign key `(yes_step_id, campaign_id)`) with a higher position, so every enrollment visits each step at most once, the per-position idempotency key of email steps stays unique, and every sequence ends. Server Actions refuse saves, moves, deletes and launches that break this (`graphProblems`). At run time a target that is missing, deleted (the foreign key sets it null) or not later ends the enrollment as completed; it never sends.
+- **When and how a condition is checked.** When the enrollment reaches the step (claimed like any step, no send window, nothing sent), once. The service-only `decide_branch` computes the answer, stores it in `campaign_branch_results` keyed by enrollment and step, and returns the stored answer on any retry, so a crash or a second tick gives the same path. Only data since the enrollment was created counts. Opened: a counted open or click (a click counts as an open) on mail of this campaign to this contact. Clicked: a counted click on mail of this campaign to this contact. Replied: a human reply (`thread_messages.direction = 'in'`, `kind = 'reply'`, auto replies and bounces excluded) in a thread of this campaign and contact, by `thread_messages.created_at`. Visited site: a stored page view of a visitor linked to this contact, optionally of one tracker and with a path starting with the prefix; only views the tracker's consent mode allowed exist and views past its retention are already purged, so the condition never sees more than the Website page does. Always: true.
+- **The run after a condition.** The enrollment moves to the target with `next_send_at = now()` and is handled on the next tick (up to a minute later); `end`, or `next` with no later step, completes it. A decide error defers it 15 minutes. From a target the sequence continues by position as before.
+- **Stop on reply toggle.** Campaign settings gain Stop on reply (default on; every existing campaign keeps `true`). The UI says the replied condition is only reached when it is off.
+- **Existing linear campaigns.** No branch rows means the engine runs the same code path as before; the only change for them is the claim function name, whose body is unchanged.
+- **Rollback safety through the claim.** `claim_due_enrollments(batch)`, which the previous release calls, is redefined with the same signature and grants to skip campaigns that contain a branch step; the new `claim_send_batch(batch)` has the old body and is what the new release calls. On a rollback the old release cannot misread a branch step as a blank email: enrollments of campaigns with conditions wait, nothing is sent, and they continue after the upgrade returns. New code on the old schema falls back to `claim_due_enrollments` when `claim_send_batch` is missing (PostgREST `PGRST202`).
+- **Enum in the same migration.** `alter type public.step_type add value 'branch'` cannot be followed by a use of `'branch'::step_type` in the same transaction ("unsafe use of new value"), so every SQL in migration 003300 compares `type::text = 'branch'`.
+- **Branch results.** `campaign_branch_results` is org-owned, RLS on, members select, written only by `decide_branch`; it cascades with the enrollment, step, campaign and contact, so contact erasure removes it. The campaign page shows Yes and No counts per condition.
 Still open:
 - Branded sender names for agency and client workspaces.
 - Optional per-workspace auto-send of AI replies, off by default.

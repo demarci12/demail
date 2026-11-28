@@ -5,9 +5,97 @@ import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { SAMPLE_CONTACT, contactData, renderTemplate, type MergeData } from "@/lib/merge";
+import { cleanText } from "@/lib/input";
+import type { Database } from "@/lib/database.types";
+import { BRANCH_CONDITION_LABELS, type BranchCondition } from "@/lib/send/branch";
 import { CampaignFields } from "../settings-fields";
 import { MergeInsert } from "../merge-insert";
-import { addStep, addVariant, applyAiDraftAsStep, deleteStep, deleteVariant, discardAiDraft, draftStepWithAi, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, sendTestStep, updateCampaign, updateStep, updateVariant } from "../actions";
+import { addBranch, addStep, addVariant, applyAiDraftAsStep, deleteStep, deleteVariant, discardAiDraft, draftStepWithAi, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, sendTestStep, updateBranch, updateCampaign, updateStep, updateVariant } from "../actions";
+type StepRow = Database["public"]["Tables"]["campaign_steps"]["Row"];
+type Tracker = { id: string; name: string };
+const CONDITION_OPTIONS = ["opened", "clicked", "replied", "visited_site"] as const;
+function stepLabel(s: StepRow, n: number) {
+  return `Step ${n}: ${cleanText(s.name, 60) || cleanText(s.subject, 60) || (s.type === "branch" ? (s.branch_condition === "always" ? "end of path" : "condition") : s.type)}`;
+}
+function targetText(steps: StepRow[], action: string | null, stepId: string | null) {
+  if (action === "next") return "next step";
+  if (action === "step") {
+    const i = steps.findIndex((x) => x.id === stepId);
+    return i >= 0 ? `go to step ${i + 1}` : "end the sequence (the target step is gone)";
+  }
+  return "end the sequence";
+}
+function conditionText(s: StepRow, trackers: Tracker[]) {
+  switch (s.branch_condition) {
+    case "opened":
+      return "If the contact opened an email of this campaign since enrollment";
+    case "clicked":
+      return "If the contact clicked a link in an email of this campaign since enrollment";
+    case "replied":
+      return "If the contact replied to this campaign since enrollment";
+    case "visited_site": {
+      const tracker = trackers.find((t) => t.id === s.branch_tracker_id);
+      const where = tracker ? cleanText(tracker.name, 100) || "your site" : "your site";
+      const path = s.branch_path ? ` at a path starting with ${cleanText(s.branch_path, 300)}` : "";
+      return `If the contact visited ${where}${path} since enrollment`;
+    }
+    default:
+      return "If the condition holds";
+  }
+}
+function ConditionFields({ condition, trackerId, path, trackers }: { condition?: string | null; trackerId?: string | null; path?: string | null; trackers: Tracker[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <Field label="Condition">
+        <Select name="condition" defaultValue={condition ?? "opened"}>
+          {CONDITION_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {BRANCH_CONDITION_LABELS[c as BranchCondition]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Tracker (visited site only)">
+        <Select name="tracker" defaultValue={trackerId ?? ""}>
+          <option value="">Any tracker</option>
+          {trackers.map((t) => (
+            <option key={t.id} value={t.id}>
+              {cleanText(t.name, 100)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Path prefix (visited site only)">
+        <Input name="path" maxLength={300} placeholder="/pricing" defaultValue={path ?? ""} />
+      </Field>
+    </div>
+  );
+}
+function TargetFields({ prefix, label, action, stepId, later }: { prefix: "yes" | "no"; label: string; action?: string | null; stepId?: string | null; later: { id: string; label: string }[] | null }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <Field label={label}>
+        <Select name={`${prefix}_action`} defaultValue={action ?? "next"}>
+          <option value="next">Continue with the next step</option>
+          <option value="end">End the sequence</option>
+          {later && <option value="step">Go to a later step</option>}
+        </Select>
+      </Field>
+      {later && (
+        <Field label="Later step (when going to one)">
+          <Select name={`${prefix}_step`} defaultValue={stepId ?? ""}>
+            <option value="">{later.length ? "Pick a step" : "No later step"}</option>
+            {later.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+    </div>
+  );
+}
 function waitParts(seconds: number | null) {
   const s = seconds ?? 86400;
   if (s % 86400 === 0) return { amount: s / 86400, unit: "days" };
@@ -129,7 +217,7 @@ export default async function CampaignPage({
   const { supabase, org, user } = await getOrgContext();
   const { data: campaign } = await supabase.from("campaigns").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!campaign) notFound();
-  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }, { data: messageStats }, { data: aiSettings }, { data: aiDrafts }] = await Promise.all([
+  const [{ data: steps }, { data: mailboxes }, { data: selected }, { data: labels }, { data: enrollments }, { data: sample }, { data: engagement }, { data: messageStats }, { data: aiSettings }, { data: aiDrafts }, { data: trackerRows }, { data: branchRows }] = await Promise.all([
     supabase.from("campaign_steps").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("position"),
     supabase.from("mailboxes").select("id, email, from_name, status").eq("organization_id", org.id).order("email"),
     supabase.from("campaign_mailboxes").select("mailbox_id").eq("campaign_id", id).eq("organization_id", org.id),
@@ -140,7 +228,17 @@ export default async function CampaignPage({
     supabase.rpc("campaign_message_stats", { p_campaign: id }),
     supabase.from("ai_settings").select("enabled").eq("organization_id", org.id).maybeSingle(),
     supabase.from("ai_drafts").select("id, subject, body").eq("organization_id", org.id).eq("campaign_id", id).eq("kind", "step").eq("status", "draft").order("created_at", { ascending: false }).limit(3),
+    supabase.from("site_trackers").select("id, name").eq("organization_id", org.id).order("name"),
+    supabase.from("campaign_branch_results").select("step_id, outcome").eq("campaign_id", id).eq("organization_id", org.id).limit(10000),
   ]);
+  const trackers: Tracker[] = trackerRows ?? [];
+  const branchCounts = new Map<string, { yes: number; no: number }>();
+  for (const r of branchRows ?? []) {
+    const c = branchCounts.get(r.step_id) ?? { yes: 0, no: 0 };
+    if (r.outcome) c.yes++;
+    else c.no++;
+    branchCounts.set(r.step_id, c);
+  }
   const stepIds = (steps ?? []).map((s) => s.id);
   const { data: variantRows } = stepIds.length
     ? await supabase.from("campaign_step_variants").select("*").eq("organization_id", org.id).in("step_id", stepIds).order("label")
@@ -269,7 +367,7 @@ export default async function CampaignPage({
               <div key={s.id} className="rounded-md border border-slate-200 p-3">
                 <div className="mb-2 flex items-center justify-between text-xs font-medium uppercase text-slate-500">
                   <span>
-                    {i + 1}. {s.type}
+                    {i + 1}. {s.type === "branch" ? (s.branch_condition === "always" ? "End of path" : "Condition") : s.type}
                   </span>
                   <span className="flex gap-1">
                     <form action={moveStep.bind(null, id, s.id, "up")}>
@@ -290,12 +388,43 @@ export default async function CampaignPage({
                   </span>
                 </div>
                 {stepVariants.length > 0 && <p className="mb-2 text-sm font-medium">Variant A</p>}
-                <form action={updateStep.bind(null, id, s.id, s.type)} className="flex flex-col gap-3">
-                  {s.type === "email" ? <EmailFields subject={s.subject} body={s.body_plain} name={s.name} /> : <WaitFields seconds={s.wait_seconds} />}
-                  <Button type="submit" variant="secondary" disabled={locked}>
-                    Save step
-                  </Button>
-                </form>
+                {s.type === "branch" ? (
+                  (() => {
+                    const all = steps ?? [];
+                    const later = all.slice(i + 1).map((x, k) => ({ id: x.id, label: stepLabel(x, i + k + 2) }));
+                    const always = s.branch_condition === "always";
+                    const c = branchCounts.get(s.id) ?? { yes: 0, no: 0 };
+                    return (
+                      <>
+                        <p className="text-sm">
+                          {always
+                            ? `Every contact who reaches this step: ${targetText(all, s.yes_action, s.yes_step_id)}.`
+                            : `${conditionText(s, trackers)}: yes, ${targetText(all, s.yes_action, s.yes_step_id)}; no, ${targetText(all, s.no_action, s.no_step_id)}.`}
+                        </p>
+                        <p className="mb-2 text-xs text-slate-500">{always ? `Passed ${c.yes + c.no}` : `Yes ${c.yes}, No ${c.no}`}</p>
+                        <form action={updateBranch.bind(null, id, s.id)} className="flex flex-col gap-3">
+                          {always ? (
+                            <input type="hidden" name="condition" value="always" />
+                          ) : (
+                            <ConditionFields condition={s.branch_condition} trackerId={s.branch_tracker_id} path={s.branch_path} trackers={trackers} />
+                          )}
+                          <TargetFields prefix="yes" label={always ? "Then" : "If yes"} action={s.yes_action} stepId={s.yes_step_id} later={later} />
+                          {!always && <TargetFields prefix="no" label="If no" action={s.no_action} stepId={s.no_step_id} later={later} />}
+                          <Button type="submit" variant="secondary" disabled={locked}>
+                            Save step
+                          </Button>
+                        </form>
+                      </>
+                    );
+                  })()
+                ) : (
+                  <form action={updateStep.bind(null, id, s.id, s.type)} className="flex flex-col gap-3">
+                    {s.type === "email" ? <EmailFields subject={s.subject} body={s.body_plain} name={s.name} /> : <WaitFields seconds={s.wait_seconds} />}
+                    <Button type="submit" variant="secondary" disabled={locked}>
+                      Save step
+                    </Button>
+                  </form>
+                )}
                 {s.type === "email" && <Preview subject={s.subject ?? ""} body={s.body_plain ?? ""} data={sampleData} to={previewTo} />}
                 {stepVariants
                   .filter((v) => v.active)
@@ -389,6 +518,32 @@ export default async function CampaignPage({
               Add wait
             </Button>
           </form>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4">
+          <form action={addBranch.bind(null, id, "condition")} className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">Add condition</h3>
+            <p className="text-xs text-slate-500">
+              A condition is checked once, when a contact reaches it, against what happened since they were enrolled. Put a wait step before it so there is time to open, click, reply or visit.
+            </p>
+            <ConditionFields trackers={trackers} />
+            <TargetFields prefix="yes" label="If yes" later={null} />
+            <TargetFields prefix="no" label="If no" later={null} />
+            <Button type="submit" disabled={locked}>
+              Add condition
+            </Button>
+          </form>
+          <form action={addBranch.bind(null, id, "end")} className="flex flex-col gap-2">
+            <p className="text-xs text-slate-500">To build two paths: add every step of both, add the condition and an end of path, move them into place, then pick the targets.</p>
+            <Button type="submit" variant="secondary" className="self-start" disabled={locked}>
+              Add end of path
+            </Button>
+          </form>
+          <ul className="list-disc pl-5 text-xs text-slate-500">
+            <li>Opened an email needs Track opens.</li>
+            <li>Clicked a link needs Track clicks.</li>
+            <li>Replied needs a Google or Microsoft sender and Stop on reply off.</li>
+            <li>Visited your site needs a website tracker.</li>
+          </ul>
         </div>
         <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4">
           <h3 className="text-sm font-medium">Write with AI</h3>

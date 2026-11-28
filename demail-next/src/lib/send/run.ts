@@ -12,13 +12,14 @@ import { sendThrough } from "@/lib/mail/send";
 import type { MailThread } from "@/lib/mail/types";
 import { localDayStart, nextWindowStart } from "./schedule";
 import { pickVariant } from "./variants";
+import { branchTarget } from "./branch";
 type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
 type Campaign = Row<"campaigns">;
 type Step = Row<"campaign_steps">;
 type Mailbox = Row<"mailboxes">;
 type Enrollment = Row<"campaign_contacts">;
 type Variant = Row<"campaign_step_variants">;
-export type TickResult = { claimed: number; sent: number; waited: number; deferred: number; stopped: number; failed: number; completed: number };
+export type TickResult = { claimed: number; sent: number; waited: number; deferred: number; stopped: number; failed: number; completed: number; branched: number };
 const MAX_ATTEMPTS = 5;
 const RETRY_MS = 5 * 60_000;
 const DEFER_MS = 15 * 60_000;
@@ -41,8 +42,10 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
   const env = serverEnv();
   const baseUrl = publicEnv().NEXT_PUBLIC_APP_URL;
   const admin = createAdminClient();
-  const result: TickResult = { claimed: 0, sent: 0, waited: 0, deferred: 0, stopped: 0, failed: 0, completed: 0 };
-  const { data: claimed, error } = await admin.rpc("claim_due_enrollments", { batch: env.SEND_BATCH_SIZE });
+  const result: TickResult = { claimed: 0, sent: 0, waited: 0, deferred: 0, stopped: 0, failed: 0, completed: 0, branched: 0 };
+  let { data: claimed, error } = await admin.rpc("claim_send_batch", { batch: env.SEND_BATCH_SIZE });
+  // Before migration 003300 only the old claim exists.
+  if (error?.code === "PGRST202") ({ data: claimed, error } = await admin.rpc("claim_due_enrollments", { batch: env.SEND_BATCH_SIZE }));
   if (error) throw new Error(`claim_due_enrollments failed: ${error.message}`);
   const rows = claimed ?? [];
   result.claimed = rows.length;
@@ -235,6 +238,23 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     if (!step) {
       await update(e, { status: "completed", next_send_at: null });
       result.completed++;
+      continue;
+    }
+    // A condition is decided once and stored, so a retry takes the same path; nothing is sent.
+    if (step.type === "branch") {
+      const { data: outcome, error: decideError } = await admin.rpc("decide_branch", { p_enrollment: e.id, p_step: step.id });
+      if (decideError || typeof outcome !== "boolean") {
+        console.error("decide_branch failed", { enrollment: e.id });
+        await defer(e, plus(now, DEFER_MS));
+        continue;
+      }
+      const target = branchTarget(steps, step, outcome);
+      if (target) await update(e, { current_step: target.position, next_send_at: new Date().toISOString(), attempts: 0 });
+      else {
+        await update(e, { status: "completed", next_send_at: null, current_step: step.position + 1 });
+        result.completed++;
+      }
+      result.branched++;
       continue;
     }
     if (step.type === "wait") {

@@ -6,22 +6,25 @@ import { getWorkspaceBranding } from "@/lib/branding";
 import { signOut } from "../(auth)/actions";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
+import { getT } from "@/lib/i18n/server";
+import type { MessageKey } from "@/lib/i18n";
+import { LocaleSwitch } from "@/components/locale-switch";
 
-const nav = [
-  { href: "/app/contacts", label: "Contacts" },
-  { href: "/app/segments", label: "Segments" },
-  { href: "/app/unibox", label: "Unibox" },
-  { href: "/app/campaigns", label: "Campaigns" },
-  { href: "/app/forms", label: "Forms" },
-  { href: "/app/website", label: "Website" },
-  { href: "/app/mailboxes", label: "Mailboxes" },
-  { href: "/app/deliverability", label: "Deliverability" },
-  { href: "/app/suppression", label: "Suppression" },
-  { href: "/app/settings/members", label: "Members" },
-  { href: "/app/settings/ai", label: "AI" },
-  { href: "/app/settings/crm", label: "CRM" },
-  { href: "/app/settings/health", label: "Setup health" },
-  { href: "/app/agency", label: "Agency" },
+const nav: { href: string; label: MessageKey }[] = [
+  { href: "/app/contacts", label: "nav.contacts" },
+  { href: "/app/segments", label: "nav.segments" },
+  { href: "/app/unibox", label: "nav.unibox" },
+  { href: "/app/campaigns", label: "nav.campaigns" },
+  { href: "/app/forms", label: "nav.forms" },
+  { href: "/app/website", label: "nav.website" },
+  { href: "/app/mailboxes", label: "nav.mailboxes" },
+  { href: "/app/deliverability", label: "nav.deliverability" },
+  { href: "/app/suppression", label: "nav.suppression" },
+  { href: "/app/settings/members", label: "nav.members" },
+  { href: "/app/settings/ai", label: "nav.ai" },
+  { href: "/app/settings/crm", label: "nav.crm" },
+  { href: "/app/settings/health", label: "nav.health" },
+  { href: "/app/agency", label: "nav.agency" },
 ];
 
 const HEX_RE = /^#[0-9a-f]{6}$/;
@@ -33,11 +36,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { supabase, org, orgs, user } = await getOrgContext();
   const brand = await getWorkspaceBranding(supabase, org.id);
+  const t = await getT();
   const links = brand
     ? [
-        { href: brand.support_url, label: "Support" },
-        { href: brand.privacy_url, label: "Privacy" },
-        { href: brand.terms_url, label: "Terms" },
+        { href: brand.support_url, label: t("nav.support") },
+        { href: brand.privacy_url, label: t("nav.privacy") },
+        { href: brand.terms_url, label: t("nav.terms") },
       ].filter((l): l is { href: string; label: string } => !!l.href)
     : [];
 
@@ -80,14 +84,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
         )}
         <form action={switchOrg} className="flex gap-1">
-          <Select name="workspace" defaultValue={org.id} aria-label="Workspace">
+          <Select name="workspace" defaultValue={org.id} aria-label={t("nav.workspace")}>
             {direct.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
               </option>
             ))}
             {agencies.map(({ agency, clients }) => (
-              <optgroup key={agency.id} label={`${agency.name} clients`}>
+              <optgroup key={agency.id} label={t("nav.clients", { name: agency.name })}>
                 {clients.map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name}
@@ -97,21 +101,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             ))}
           </Select>
           <Button type="submit" variant="secondary" className="px-2">
-            Go
+            {t("nav.go")}
           </Button>
         </form>
         <nav className="flex flex-col gap-1 text-sm">
           {nav.map((n) => (
             <Link key={n.href} href={n.href} className="rounded-md px-2 py-1.5 hover:bg-slate-200">
-              {n.label}
+              {t(n.label)}
               {n.href === "/app/unibox" && !!unread && <span className="ml-2 rounded-full bg-sky-600 px-1.5 py-0.5 text-xs text-white">{unread}</span>}
             </Link>
           ))}
         </nav>
         <form action={signOut} className="mt-auto flex flex-col gap-2">
           <span className="truncate text-xs text-slate-500">{user.email}</span>
+          <LocaleSwitch />
           <Button type="submit" variant="secondary">
-            Sign out
+            {t("nav.signout")}
           </Button>
         </form>
         {brand && (links.length > 0 || !brand.hide_powered_by) && (
@@ -125,7 +130,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 ))}
               </div>
             )}
-            {!brand.hide_powered_by && <span>Powered by Demail</span>}
+            {!brand.hide_powered_by && <span>{t("nav.powered")}</span>}
           </div>
         )}
       </aside>

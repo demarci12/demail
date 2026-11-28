@@ -6,6 +6,8 @@ import { BrandFooter, BrandLogo } from "@/components/public-brand";
 import { getPublicBranding } from "@/lib/branding";
 import { applyUnsubscribe } from "@/lib/unsubscribe-apply";
 import { verifyUnsubscribe } from "@/lib/unsubscribe";
+import { getT } from "@/lib/i18n/server";
+import { LocaleSwitch } from "@/components/locale-switch";
 export const dynamic = "force-dynamic";
 type Params = Promise<{ token: string }>;
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -17,6 +19,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function UnsubscribePage({ params, searchParams }: { params: Params; searchParams: Promise<{ done?: string }> }) {
   const { token } = await params;
   const { done } = await searchParams;
+  const t = await getT();
   const parsed = verifyUnsubscribe(token);
   const valid = parsed !== null;
   const brand = parsed ? await getPublicBranding(parsed.orgId) : null;
@@ -30,20 +33,23 @@ export default async function UnsubscribePage({ params, searchParams }: { params
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center p-6">
       <Card className="flex w-full flex-col gap-4">
         <BrandLogo brand={brand} />
-        <h1 className="text-xl font-semibold">Unsubscribe</h1>
+        <h1 className="text-xl font-semibold">{t("unsub.title")}</h1>
         {!valid || done === "0" ? (
-          <p className="text-sm text-slate-600">This unsubscribe link is not valid.</p>
+          <p className="text-sm text-slate-600">{t("unsub.invalid")}</p>
         ) : done === "1" ? (
-          <p className="text-sm text-slate-600">You are unsubscribed and will not receive further email from this sender.</p>
+          <p className="text-sm text-slate-600">{t("unsub.done")}</p>
         ) : (
           <form action={confirm} className="flex flex-col gap-3">
-            <p className="text-sm text-slate-600">Confirm that you want to stop receiving email from this sender.</p>
+            <p className="text-sm text-slate-600">{t("unsub.confirm")}</p>
             <Button type="submit" style={brand ? { backgroundColor: brand.accent_color } : undefined}>
-              Unsubscribe
+              {t("unsub.button")}
             </Button>
           </form>
         )}
       </Card>
+      <div className="mt-3 flex justify-center">
+        <LocaleSwitch />
+      </div>
       <BrandFooter brand={brand} poweredBy={false} />
     </main>
   );

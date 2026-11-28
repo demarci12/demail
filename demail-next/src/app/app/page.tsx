@@ -2,11 +2,13 @@ import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, PageHeader } from "@/components/ui/card";
+import { getT } from "@/lib/i18n/server";
 
 type Step = { key: string; title: string; text: string; href: string; cta: string; done: boolean };
 
 export default async function WorkspaceHome() {
   const { supabase, org, canManage } = await getOrgContext();
+  const t = await getT();
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
   const since = weekAgo.toISOString();
@@ -22,21 +24,21 @@ export default async function WorkspaceHome() {
   const activeCampaigns = await supabase.from("campaigns").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("status", "active");
 
   const steps: Step[] = [
-    { key: "mailbox", title: "Connect a mailbox", text: "Campaigns send from your own Google or Microsoft mailbox.", href: "/app/mailboxes", cta: "Connect a mailbox", done: (mailboxes.count ?? 0) > 0 },
-    { key: "contacts", title: "Add contacts", text: "Import a CSV or add people one by one.", href: "/app/contacts/import", cta: "Import contacts", done: (contacts.count ?? 0) > 0 },
-    { key: "campaign", title: "Write a campaign", text: "Add email steps, pick senders and enroll contacts.", href: "/app/campaigns/new", cta: "New campaign", done: (campaigns.count ?? 0) > 0 },
-    { key: "launch", title: "Launch it", text: "Review the campaign, then start it. Nothing sends before you do.", href: "/app/campaigns", cta: "Open campaigns", done: (launched.count ?? 0) > 0 },
+    { key: "mailbox", title: t("home.mailbox.title"), text: t("home.mailbox.text"), href: "/app/mailboxes", cta: t("home.mailbox.cta"), done: (mailboxes.count ?? 0) > 0 },
+    { key: "contacts", title: t("home.contacts.title"), text: t("home.contacts.text"), href: "/app/contacts/import", cta: t("home.contacts.cta"), done: (contacts.count ?? 0) > 0 },
+    { key: "campaign", title: t("home.campaign.title"), text: t("home.campaign.text"), href: "/app/campaigns/new", cta: t("home.campaign.cta"), done: (campaigns.count ?? 0) > 0 },
+    { key: "launch", title: t("home.launch.title"), text: t("home.launch.text"), href: "/app/campaigns", cta: t("home.launch.cta"), done: (launched.count ?? 0) > 0 },
     ...(canManage
-      ? [{ key: "scheduler", title: "Start the scheduler", text: "A scheduler calls Demail every minute to send mail and read replies. Run supabase/setup/schedule.sql once.", href: "/app/settings/health", cta: "Check setup health", done: !!beat.data } satisfies Step]
+      ? [{ key: "scheduler", title: t("home.scheduler.title"), text: t("home.scheduler.text"), href: "/app/settings/health", cta: t("home.scheduler.cta"), done: !!beat.data } satisfies Step]
       : []),
   ];
   const remaining = steps.filter((s) => !s.done);
   const next = remaining[0];
   const stats = [
-    { label: "Contacts", value: contacts.count ?? 0, href: "/app/contacts" },
-    { label: "Active campaigns", value: activeCampaigns.count ?? 0, href: "/app/campaigns" },
-    { label: "Sent, last 7 days", value: sent.count ?? 0, href: "/app/campaigns" },
-    { label: "Replies, last 7 days", value: replies.count ?? 0, href: "/app/unibox" },
+    { label: t("home.stat.contacts"), value: contacts.count ?? 0, href: "/app/contacts" },
+    { label: t("home.stat.active"), value: activeCampaigns.count ?? 0, href: "/app/campaigns" },
+    { label: t("home.stat.sent"), value: sent.count ?? 0, href: "/app/campaigns" },
+    { label: t("home.stat.replies"), value: replies.count ?? 0, href: "/app/unibox" },
   ];
 
   return (
@@ -53,9 +55,9 @@ export default async function WorkspaceHome() {
       {remaining.length > 0 ? (
         <Card className="flex flex-col gap-4">
           <div>
-            <h2 className="font-medium">Getting started</h2>
+            <h2 className="font-medium">{t("home.started")}</h2>
             <p className="text-sm text-slate-600">
-              {steps.length - remaining.length} of {steps.length} done. Next: {next.title.toLowerCase()}.
+              {t("home.progress", { done: steps.length - remaining.length, total: steps.length, next: next.title.toLowerCase() })}
             </p>
           </div>
           <ol className="flex flex-col gap-3">
@@ -83,16 +85,14 @@ export default async function WorkspaceHome() {
           </ol>
         </Card>
       ) : (
-        <p className="text-sm text-slate-600">
-          Setup is complete. Open the{" "}
+        <p className="flex flex-wrap gap-x-3 text-sm text-slate-600">
+          <span>{t("home.complete")}</span>
           <Link href="/app/unibox" className="text-sky-700">
-            unibox
-          </Link>{" "}
-          for replies or{" "}
+            {t("nav.unibox")}
+          </Link>
           <Link href="/app/deliverability" className="text-sky-700">
-            deliverability
-          </Link>{" "}
-          to watch your sending.
+            {t("nav.deliverability")}
+          </Link>
         </p>
       )}
     </div>

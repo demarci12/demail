@@ -358,6 +358,17 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 - **Library edits.** A conversation's key comes from its theme, subject and first message. An edited conversation keeps its old key in `previousKeys`, so threads in flight on it continue and the 60 day repeat window still holds.
 - **Self-hosted limit.** An instance only warms between its own mailboxes in one workspace. A shared public pool is left for later.
 
+## Languages
+
+The interface comes in English and Hungarian. The language is the `demail_locale` cookie, set by the EN and HU switch in the app sidebar and on the sign-in, sign-up, onboarding and unsubscribe pages. Without the cookie, the browser language decides, and English is the default.
+
+- Catalogs: `src/lib/i18n/en.ts` (every key) and `src/lib/i18n/hu.ts` (formal Ön register). A key missing from Hungarian falls back to English.
+- Server components: `const t = await getT()` from `@/lib/i18n/server`. Client components: `useT()` from `@/lib/i18n/client`. Placeholders look like `{name}`.
+- `npm run i18n:check` fails when `hu` lacks an `en` key, has an unknown key, changes a placeholder or uses a dash.
+- AI: reply classification knows Hungarian cues. `stepDraftMessages` and `replyDraftMessages` take an optional `language` (`"en"` or `"hu"`). Campaigns do not store a language yet, so the campaign pages do not pass it.
+
+Translated: sign-in, sign-up, onboarding, the sidebar, workspace home, contacts list, unsubscribe page and hosted form chrome (errors, buttons, steps). Not translated yet: contact detail, import and new contact pages, segments, campaigns, unibox, forms builder and submissions, website, mailboxes, deliverability, suppression, all settings pages, agency, invite, agency invite and connect pages, error and not-found pages, emails sent by the app, and the form consent text and field labels, which the form owner writes.
+
 ## Design decisions
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.

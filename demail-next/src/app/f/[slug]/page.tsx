@@ -13,22 +13,12 @@ import { FILE_ACCEPT } from "@/lib/forms/files";
 import { formPages, normalizeRedirectUrl, parseFields, type FormField } from "@/lib/input";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PagedForm } from "./paged-form";
+import { getT } from "@/lib/i18n/server";
+import type { MessageKey, Translate } from "@/lib/i18n";
 export const dynamic = "force-dynamic";
 const SLUG_RE = /^[A-Za-z0-9_-]{8,32}$/;
 const HEX_RE = /^#[0-9a-f]{6}$/;
-const ERRORS: Record<string, string> = {
-  invalid: "Check the highlighted fields and try again.",
-  name: "Names cannot contain links, web or email addresses.",
-  link: "Answers cannot contain links, web or email addresses.",
-  consent: "Please tick the consent box.",
-  captcha: "The spam check did not pass. Try again.",
-  expired: "This page was open too long or sent too fast. Try again.",
-  rate: "Too many submissions. Try again later.",
-  closed: "This form is not accepting submissions.",
-  filetype: "That file type is not accepted. Use a PDF, PNG, JPEG, WebP or plain text file.",
-  filesize: "That file is too large. The limit is 3 MB per file.",
-  failed: "Something went wrong. Try again.",
-};
+const ERROR_CODES = ["invalid", "name", "link", "consent", "captcha", "expired", "rate", "closed", "filetype", "filesize", "failed"] as const;
 type Theme = { main: string; surface: string | null; text: string; muted: string; input: string };
 // Light is today's look; select("*") keeps the page working before the display columns exist.
 const THEMES: Record<string, Theme> = {
@@ -55,7 +45,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 const textareaCls =
   "min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100";
-function FieldInput({ field, cls }: { field: FormField; cls: string }) {
+function FieldInput({ field, cls, t }: { field: FormField; cls: string; t: Translate }) {
   const name = `f_${field.key}`;
   const placeholder = field.placeholder;
   switch (field.type) {
@@ -65,7 +55,7 @@ function FieldInput({ field, cls }: { field: FormField; cls: string }) {
       return (
         <Select name={name} required={field.required} defaultValue="" className={cls}>
           <option value="" disabled={field.required}>
-            {placeholder ?? "Choose one"}
+            {placeholder ?? t("form.choose")}
           </option>
           {(field.options ?? []).map((o) => (
             <option key={o} value={o}>
@@ -84,7 +74,7 @@ function FieldInput({ field, cls }: { field: FormField; cls: string }) {
       return <Input type="text" name={name} required={field.required} maxLength={200} placeholder={placeholder} className={cls} />;
   }
 }
-function FieldRow({ field, theme, large = false }: { field: FormField; theme: Theme; large?: boolean }) {
+function FieldRow({ field, theme, t, large = false }: { field: FormField; theme: Theme; t: Translate; large?: boolean }) {
   if (field.type === "checkbox") {
     return (
       <label className={`flex items-start gap-2 ${large ? "text-base" : "text-sm"} ${theme.text}`}>
@@ -102,13 +92,14 @@ function FieldRow({ field, theme, large = false }: { field: FormField; theme: Th
         {field.label}
         {field.required ? " *" : ""}
       </span>
-      <FieldInput field={field} cls={theme.input} />
+      <FieldInput field={field} cls={theme.input} t={t} />
     </label>
   );
 }
 export default async function PublicFormPage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { slug } = await params;
   const { embed, done, error } = await searchParams;
+  const t = await getT();
   const form = await loadForm(slug);
   if (!form) notFound();
   const isEmbed = embed === "1";
@@ -127,15 +118,15 @@ export default async function PublicFormPage({ params, searchParams }: { params:
         <p className={`whitespace-pre-line text-sm ${theme.text}`}>{form.success_message}</p>
         {isEmbed && redirectUrl ? (
           <a href={redirectUrl} target="_top" rel="noopener noreferrer" className="text-sm font-medium hover:underline" style={{ color: accent }}>
-            Continue
+            {t("form.continue")}
           </a>
         ) : null}
       </>
     );
   } else if (!fields) {
-    body = <Alert>{ERRORS.closed}</Alert>;
+    body = <Alert>{t("form.err.closed")}</Alert>;
   } else {
-    const errorAlert = error ? <Alert>{Object.hasOwn(ERRORS, error) ? ERRORS[error] : ERRORS.failed}</Alert> : null;
+    const errorAlert = error ? <Alert>{t(`form.err.${(ERROR_CODES as readonly string[]).includes(error) ? error : "failed"}` as MessageKey)}</Alert> : null;
     const consent = form.consent_text ? (
       <label className={`flex items-start gap-2 text-sm ${theme.text}`}>
         <input type="checkbox" name="consent" required className="mt-0.5 h-4 w-4" />
@@ -158,7 +149,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
         <form method="post" encType="multipart/form-data" action={`/api/forms/${slug}`} className="flex flex-col gap-3">
           {errorAlert}
           {fields.map((f) => (
-            <FieldRow key={f.key} field={f} theme={theme} />
+            <FieldRow key={f.key} field={f} theme={theme} t={t} />
           ))}
           {consent}
           {hidden}
@@ -174,7 +165,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
           {errorAlert}
           <PagedForm
             action={`/api/forms/${slug}`}
-            pages={pages.map((page) => page.map((f) => <FieldRow key={f.key} field={f} theme={theme} large={focus} />))}
+            pages={pages.map((page) => page.map((f) => <FieldRow key={f.key} field={f} theme={theme} t={t} large={focus} />))}
             hiddenInputs={hidden}
             finalPage={consent}
             captcha={turnstile}

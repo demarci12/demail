@@ -2,7 +2,7 @@
 -- 1. Replace the two placeholders below.
 -- 2. Run the whole file. Re-running replaces the jobs and the stored secrets.
 -- Jobs: demail-send, demail-sync, demail-warmup and demail-ai (every minute, HTTP), demail-crm (every 5 minutes, HTTP),
--- demail-domains (hourly, HTTP), demail-verify (every 2 minutes, HTTP), demail-health (every 5 minutes, SQL: health bands and warmup planning), demail-segments (every 5 minutes, SQL: live segment links) and demail-purge (daily 03:17, SQL).
+-- demail-domains (hourly, HTTP), demail-verify (every 2 minutes, HTTP), demail-health (every 5 minutes, SQL: health bands and warmup planning), demail-segments (every 5 minutes, SQL: live segment links), demail-forms (every minute, HTTP), demail-campaigns (every 5 minutes, SQL: campaign rules and winner promotion) and demail-purge (daily 03:17, SQL).
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;
 create extension if not exists supabase_vault with schema vault;

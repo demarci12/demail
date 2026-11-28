@@ -41,6 +41,10 @@ function FieldControls({ field }: { field?: FormField }) {
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" name="required" defaultChecked={field?.required ?? false} /> Required
       </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="page_break" defaultChecked={field?.page_break ?? false} /> Starts a new page
+        <span className="text-xs text-slate-500">Ignored on the first field.</span>
+      </label>
     </>
   );
 }
@@ -113,7 +117,7 @@ export default async function FormPage({ params, searchParams }: { params: Promi
           <Field label="Consent text (leave blank for no consent box)">
             <textarea name="consent_text" rows={2} maxLength={1000} defaultValue={form.consent_text ?? ""} className={textarea} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Accent color">
               <Input name="accent_color" required pattern="#[0-9a-fA-F]{6}" defaultValue={form.accent_color} />
             </Field>
@@ -123,7 +127,23 @@ export default async function FormPage({ params, searchParams }: { params: Promi
                 <option value="plain">Plain</option>
               </Select>
             </Field>
+            <Field label="Theme">
+              <Select name="theme" defaultValue={form.theme ?? "light"}>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="soft">Soft</option>
+              </Select>
+            </Field>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="focus_mode" defaultChecked={form.focus_mode ?? false} /> Focus mode (one question per screen)
+          </label>
+          <Field label="Redirect after submit (optional https address)">
+            <Input name="redirect_url" type="url" maxLength={500} placeholder="https://example.com/thanks" defaultValue={form.redirect_url ?? ""} />
+          </Field>
+          <p className="text-xs text-slate-600">
+            Visitors go there after a successful submission instead of seeing the success message. Embedded forms show the success message with a Continue link.
+          </p>
           <Field label="Label for submitters">
             <Select name="label_id" defaultValue={form.label_id ?? ""}>
               <option value="">No label</option>

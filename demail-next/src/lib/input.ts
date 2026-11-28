@@ -146,6 +146,7 @@ export type FormField = {
   maps_to: MapsTo;
   options?: string[];
   placeholder?: string;
+  page_break?: true;
 };
 
 // Validates and normalizes a stored or edited field list; null when any rule fails.
@@ -185,9 +186,34 @@ export function parseFields(raw: unknown): FormField[] | null {
       const placeholder = cleanText(f.placeholder, 100);
       if (placeholder) field.placeholder = placeholder;
     }
+    if (f.page_break === true && out.length > 0) field.page_break = true;
     out.push(field);
   }
   return emailFields === 1 ? out : null;
+}
+// Splits fields into pages before each page_break field; always at least one page.
+export function formPages(fields: FormField[]): FormField[][] {
+  const pages: FormField[][] = [[]];
+  for (const f of fields) {
+    if (f.page_break && pages[pages.length - 1].length > 0) pages.push([]);
+    pages[pages.length - 1].push(f);
+  }
+  return pages;
+}
+const REDIRECT_RE = /^https:\/\/[a-z0-9.-]+(:[0-9]{1,5})?([/?#][^\s]*)?$/;
+// An https address on a public hostname, normalized; null when blank or not allowed.
+export function normalizeRedirectUrl(raw: unknown): string | null {
+  const s = cleanText(raw, 501);
+  if (!s || !isHttpsUrl(s, 500)) return null;
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return null;
+  }
+  if (!isPublicHostname(u.hostname)) return null;
+  if (u.port !== "" && !(Number(u.port) >= 1 && Number(u.port) <= 65535)) return null;
+  return u.href.length <= 500 && REDIRECT_RE.test(u.href) ? u.href : null;
 }
 
 export type SubmissionContact = {

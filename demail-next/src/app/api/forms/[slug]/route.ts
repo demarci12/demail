@@ -3,7 +3,7 @@ import type { Json } from "@/lib/database.types";
 import { publicEnv, turnstileEnabled } from "@/lib/env";
 import { clientIp, rateBucket, verifyFillToken } from "@/lib/forms/token";
 import { verifyTurnstile } from "@/lib/forms/turnstile";
-import { parseFields, validateSubmission } from "@/lib/input";
+import { normalizeRedirectUrl, parseFields, validateSubmission } from "@/lib/input";
 import { createAdminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,11 @@ const RESULTS: Record<string, string> = { rate_limited: "rate", closed: "closed"
 function back(slug: string, query: string, embed: boolean) {
   const q = embed ? `${query}&embed=1` : query;
   return NextResponse.redirect(new URL(`/f/${slug}?${q}`, publicEnv().NEXT_PUBLIC_APP_URL), 303);
+}
+// The redirect target comes only from the stored form row and is re-checked here; an embed never leaves its frame.
+function success(form: { redirect_url?: string | null }, slug: string, embed: boolean) {
+  const target = embed ? null : normalizeRedirectUrl(form.redirect_url);
+  return target ? NextResponse.redirect(target, 303) : back(slug, "done=1", embed);
 }
 export function GET() {
   return new NextResponse(null, { status: 405, headers: { allow: "POST" } });
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const admin = createAdminClient();
   const { data: form } = await admin
     .from("forms")
-    .select("id, organization_id, fields, consent_text, published")
+    .select("*")
     .eq("slug", slug)
     .eq("published", true)
     .maybeSingle();
@@ -44,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   };
   const embed = get("embed") === "1";
   // A filled honeypot looks like success to the bot and writes nothing.
-  if (get("website")) return back(slug, "done=1", embed);
+  if (get("website")) return success(form, slug, embed);
   if (!verifyFillToken(form.id, get("t"))) return back(slug, "error=expired", embed);
   const ip = clientIp(req);
   if (turnstileEnabled() && !(await verifyTurnstile(get("cf-turnstile-response"), ip))) return back(slug, "error=captcha", embed);
@@ -63,6 +68,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     console.error("form submission failed", form.id);
     return back(slug, "error=failed", embed);
   }
-  if (status === "ok") return back(slug, "done=1", embed);
+  if (status === "ok") return success(form, slug, embed);
   return back(slug, `error=${RESULTS[status ?? ""] ?? "failed"}`, embed);
 }

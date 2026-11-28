@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
-import { FIELD_TYPES, MAPS_TO, cleanText, parseFields, type FieldType, type FormField, type MapsTo } from "@/lib/input";
+import { FIELD_TYPES, MAPS_TO, cleanText, normalizeRedirectUrl, parseFields, type FieldType, type FormField, type MapsTo } from "@/lib/input";
 const LIST = "/app/forms";
 const uuid = z.string().uuid();
 const FIELD_RULES =
@@ -49,6 +49,7 @@ function fieldInput(formData: FormData) {
     maps_to: (MAPS_TO.includes(maps_to as MapsTo) ? maps_to : "") as MapsTo,
     ...(type === "select" ? { options } : {}),
     ...(placeholder ? { placeholder } : {}),
+    ...(formData.get("page_break") === "on" ? { page_break: true as const } : {}),
   };
 }
 function fieldIndex(id: string, index: number, fields: FormField[]) {
@@ -79,12 +80,18 @@ export async function saveForm(id: string, formData: FormData) {
     .toLowerCase();
   const layout = String(formData.get("layout") ?? "");
   const daily_limit = Number(formData.get("daily_limit"));
+  const theme = String(formData.get("theme") ?? "");
+  const focus_mode = formData.get("focus_mode") === "on";
+  const rawRedirect = cleanText(formData.get("redirect_url"), 1000);
+  const redirect_url = rawRedirect ? normalizeRedirectUrl(rawRedirect) : null;
   if (!name) return back(id, "error", "Give the form a name of 1 to 100 characters.");
   if (!submit_label) return back(id, "error", "The button text needs 1 to 40 characters.");
   if (!success_message) return back(id, "error", "The success message needs 1 to 500 characters.");
   if (!/^#[0-9a-f]{6}$/.test(accent_color)) return back(id, "error", "Pick an accent color like #0284c7.");
   if (layout !== "card" && layout !== "plain") return back(id, "error", "Pick a layout.");
   if (!Number.isInteger(daily_limit) || daily_limit < 1 || daily_limit > 10000) return back(id, "error", "The daily limit is a whole number from 1 to 10000.");
+  if (theme !== "light" && theme !== "dark" && theme !== "soft") return back(id, "error", "Pick a theme.");
+  if (rawRedirect && !redirect_url) return back(id, "error", "The redirect must be a full https address on a public domain, up to 500 characters.");
   const rawLabel = String(formData.get("label_id") ?? "");
   let label_id: string | null = null;
   if (rawLabel) {
@@ -103,7 +110,7 @@ export async function saveForm(id: string, formData: FormData) {
   }
   const { error } = await supabase
     .from("forms")
-    .update({ name, title, intro, submit_label, success_message, consent_text, accent_color, layout, daily_limit, label_id, campaign_id, published: formData.get("published") === "on" })
+    .update({ name, title, intro, submit_label, success_message, consent_text, accent_color, layout, theme, focus_mode, redirect_url, daily_limit, label_id, campaign_id, published: formData.get("published") === "on" })
     .eq("id", id)
     .eq("organization_id", org.id);
   if (error) return back(id, "error", "Could not save the form.");

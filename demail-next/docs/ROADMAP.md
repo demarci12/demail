@@ -23,7 +23,7 @@ Shipped:
 Still open:
 - SMTP/IMAP mailboxes, which need a long-lived connection that Vercel and Supabase Edge Functions cannot hold, so they would need an optional external poller.
 - Provider push (Gmail Pub/Sub, Graph change notifications) as an accelerator over polling.
-Next: Phase 5 part 5.
+Next: Phase 5 part 6.
 
 ## Phase 4: deliverability
 Part 1 shipped:
@@ -37,7 +37,7 @@ Still open:
 - Gmail rescue from spam, which needs the `gmail.modify` scope.
 - A public warmup pool across instances.
 - An AI content bank next to the hand-written library.
-Next: Phase 5 part 5.
+Next: Phase 5 part 6.
 ## Phase 5: data, AI and channels
 
 - AI writing, reply drafts and classification (bring your own key).
@@ -135,6 +135,7 @@ Part 5 plan:
 - The "visited site" condition, which needs branching steps (still open in Phase 2); the visit data it will read ships in Part 4.
 Part 5 shipped:
 - Condition steps in campaigns: opened, clicked, replied and visited site, with an end of path step, forward-only targets and decisions kept per contact.
+- Hosted form extras: page breaks, focus mode, light, dark and soft themes and a redirect after submit.
 Part 5 decisions:
 - **Scope split.** Part 5 ships condition steps in campaigns (closing the Phase 2 branching item and delivering the visited site condition) and the forms extras that need no mail and no storage: multi-page forms, focus mode, three themes and an optional redirect after submit. File fields, submission notifications and double opt-in move to Part 6 plan, because they need Storage with public uploads from strangers, or send mail from the instance to addresses typed by strangers and need a sender, quota and abuse design of their own. Subsequences and automatic winner promotion stay open in Phase 2.
 - **Step model.** A condition is a step row (`campaign_steps.type = 'branch'`), so positions still order the sequence. Its columns are `branch_condition` (`opened`, `clicked`, `replied`, `visited_site`, `always`), `branch_tracker_id` (visited site only, null means any tracker of the workspace), `branch_path` (visited site only, a path prefix such as `/pricing`), `yes_action` and `no_action` (`next`, `end`, `step`) and `yes_step_id` and `no_step_id`. End of path in the UI is `always` with `yes_action = 'end'` (or a later step when edited); its `no_action` is stored as `end` and never used.
@@ -146,6 +147,16 @@ Part 5 decisions:
 - **Rollback safety through the claim.** `claim_due_enrollments(batch)`, which the previous release calls, is redefined with the same signature and grants to skip campaigns that contain a branch step; the new `claim_send_batch(batch)` has the old body and is what the new release calls. On a rollback the old release cannot misread a branch step as a blank email: enrollments of campaigns with conditions wait, nothing is sent, and they continue after the upgrade returns. New code on the old schema falls back to `claim_due_enrollments` when `claim_send_batch` is missing (PostgREST `PGRST202`).
 - **Enum in the same migration.** `alter type public.step_type add value 'branch'` cannot be followed by a use of `'branch'::step_type` in the same transaction ("unsafe use of new value"), so every SQL in migration 003300 compares `type::text = 'branch'`.
 - **Branch results.** `campaign_branch_results` is org-owned, RLS on, members select, written only by `decide_branch`; it cascades with the enrollment, step, campaign and contact, so contact erasure removes it. The campaign page shows Yes and No counts per condition.
+- **Page breaks.** A field property `page_break: true` ("Starts a new page"), ignored on the first field and kept by `parseFields`; the previous release's `parseFields` drops unknown keys, so old code renders one page.
+- **Focus mode.** `forms.focus_mode` (default off): every field is its own screen with a progress line. Multi-page forms and focus mode use a small client component that keeps every page in the document and posts all answers in one submission; a form with one page and focus off renders exactly as before, with no client component. Both need JavaScript in the visitor's browser, which Turnstile already needs.
+- **Themes.** `forms.theme` is `light` (default, the earlier look), `dark` or `soft`; the accent color stays per form and inputs keep the white field style in every theme.
+- **Redirect after submit.** `forms.redirect_url`, optional, set by members: only an `https://` address on a public hostname with no user name or password, at most 500 characters, normalized with `new URL().href` and checked by a database `CHECK` too. It is read from the form row only, never from the request, and checked again before use. A successful submission (and a tripped honeypot, which must look the same) answers 303 to it; an embedded form shows the success message with a Continue link (`target="_top"`, `rel="noopener noreferrer"`) instead, because the target site may refuse framing. This replaces the Part 2 decision that there is no custom redirect after submit.
+- **Fail soft.** Public form loaders and the submit route select `*`, so the new code works before migration 003400 runs (light theme, one page, no redirect); saving form settings fails with the existing "Could not save the form." until it runs. Before migration 003300 the engine falls back to `claim_due_enrollments` and condition steps cannot be added.
+- **Rollout window.** All changes are additive except the redefined `claim_due_enrollments` (same signature and grants) and the replaced `campaign_steps` check (widened). The previous release works on the new schema: it never writes branch steps or the new form columns. After a rollback, campaigns with conditions wait without sending, linear campaigns send as before, forms show one light page with the success message, and the old form editor drops page breaks when it saves fields; collected results stay. Migrations are applied before the new app deploys.
+Part 5 upgrade order: apply `20260101003300_campaign_branches.sql`, then `20260101003400_form_display.sql`, then deploy the app; `supabase/setup/schedule.sql` needs no re-run (README, Upgrading).
+Part 6 plan:
+- File fields on hosted forms, which need Storage and limits for uploads from strangers.
+- Submission notifications and double opt-in, which send mail to addresses typed into a form and need a sender, quota and abuse rules.
 Still open:
 - Branded sender names for agency and client workspaces.
 - Optional per-workspace auto-send of AI replies, off by default.

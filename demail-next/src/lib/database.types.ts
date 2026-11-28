@@ -1583,6 +1583,9 @@ export type Database = {
           fields: Json;
           accent_color: string;
           layout: "card" | "plain";
+          theme: string;
+          focus_mode: boolean;
+          redirect_url: string | null;
           label_id: string | null;
           campaign_id: string | null;
           daily_limit: number;
@@ -1604,6 +1607,9 @@ export type Database = {
           fields?: Json;
           accent_color?: string;
           layout?: "card" | "plain";
+          theme?: string;
+          focus_mode?: boolean;
+          redirect_url?: string | null;
           label_id?: string | null;
           campaign_id?: string | null;
           daily_limit?: number;
@@ -1625,6 +1631,9 @@ export type Database = {
           fields?: Json;
           accent_color?: string;
           layout?: "card" | "plain";
+          theme?: string;
+          focus_mode?: boolean;
+          redirect_url?: string | null;
           label_id?: string | null;
           campaign_id?: string | null;
           daily_limit?: number;

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getOrgContext } from "@/lib/org";
+import { consensusVerify, enrichContacts } from "@/lib/enrichment/run";
 
 const uuid = z.string().uuid();
 const MAX_SELECTED = 100;
@@ -50,6 +51,13 @@ export async function bulkContacts(formData: FormData) {
     if (error) done(returnTo, "error", "Could not enroll contacts.");
     revalidatePath(`/app/campaigns/${camp.id}`);
     done(returnTo, "msg", `Enrolled ${data ?? 0} of ${ids.length} contacts. Unsubscribed, suppressed and already enrolled contacts are skipped.`);
+  }
+
+  // Paid provider calls: only on this click, only for the ticked contacts, capped per click and per day.
+  if (op === "enrich_phone" || op === "enrich_email" || op === "consensus") {
+    const out = op === "consensus" ? await consensusVerify(org.id, ids) : await enrichContacts(org.id, ids, [op === "enrich_phone" ? "phone" : "email"]);
+    revalidatePath("/app/contacts");
+    done(returnTo, out.ok ? "msg" : "error", out.message);
   }
 
   if (op === "delete") {

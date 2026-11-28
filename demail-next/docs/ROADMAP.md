@@ -41,7 +41,7 @@ Next: Phase 5 part 6.
 ## Phase 5: data, AI and channels
 
 - AI writing, reply drafts and classification (bring your own key).
-- Built-in email verification shipped (syntax, MX, disposable, role and typo checks; no SMTP probe). Provider adapters and waterfall enrichment are still open.
+- Built-in email verification shipped (syntax, MX, disposable, role and typo checks; no SMTP probe). Waterfall enrichment and consensus verification shipped as optional adapters (see README, Enrichment and consensus verification).
 - Lead finder, CRM sync, forms and website tracking.
 - LinkedIn and other channels through adapters, agencies and white-label.
 - Hungarian and English localization.
@@ -169,7 +169,13 @@ Still open:
 - Salesforce, Pipedrive and Zoho sync.
 - A HubSpot OAuth app.
 - Pushing unsubscribes and sent mail to HubSpot.
-- Email verification and waterfall enrichment.
+- More enrichment adapters (Prospeo and Findymail have no dedicated shape yet; use the generic HTTP one), phone verification and bulk runs beyond 20 contacts per click.
 - Lead finder.
 - LinkedIn and other channels.
 - Hungarian and English localization.
+
+Enrichment line shipped (waterfall email and phone, consensus verification):
+- **Opt-in everywhere.** `enrichment_settings.enabled` is false by default, runs need a member's click on selected contacts or a segment (20 per click), and a per-workspace daily cap is reserved atomically before each provider call.
+- **Schema.** Migration 004300 only adds tables (`enrichment_settings`, `enrichment_providers`, `enrichment_credentials`, `enrichment_usage`, `contact_enrichment`) and `consensus_*` columns on `contacts`, plus three service-only functions. Keys are sealed with a new `enrichment-key` domain; the previous release never reads any of it.
+- **Never weaker.** `set_contact_consensus` keeps `invalid` and never lifts `risky` to `valid`; the app applies the same rule before writing.
+- **Upgrade order.** Apply `20260101004300_enrichment.sql`, then deploy. No scheduler change.

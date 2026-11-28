@@ -7,7 +7,7 @@ import { Select } from "@/components/ui/input";
 import { describeRules, readRules } from "@/lib/segments/rules";
 import type { Json } from "@/lib/database.types";
 import { SegmentForm } from "../segment-form";
-import { deleteSegment, enrollSegment } from "../actions";
+import { deleteSegment, enrichSegment, enrollSegment } from "../actions";
 
 export default async function SegmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; msg?: string }> }) {
   const { id } = await params;
@@ -70,6 +70,20 @@ export default async function SegmentPage({ params, searchParams }: { params: Pr
           </Button>
         </form>
         <p className="text-xs text-slate-500">Enrolling adds contacts to the campaign. They are mailed when it is active. Unsubscribed and suppressed contacts are skipped.</p>
+      </Card>
+      <Card className="flex flex-col gap-3">
+        <h2 className="font-medium">Enrich the first 20 matching contacts</h2>
+        <form action={enrichSegment.bind(null, seg.id)} className="flex gap-2">
+          <Select name="op" defaultValue="phone" aria-label="Enrichment action">
+            <option value="phone">Find phone numbers</option>
+            <option value="email">Find work emails</option>
+            <option value="consensus">Verify with several providers</option>
+          </Select>
+          <Button type="submit" variant="secondary">
+            Run
+          </Button>
+        </form>
+        <p className="text-xs text-slate-500">Provider calls may cost money. This runs only when you click, needs providers set up in Settings, Enrichment, and counts toward its daily cap.</p>
       </Card>
       {canManage && (
         <form action={deleteSegment.bind(null, seg.id)}>

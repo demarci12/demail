@@ -23,6 +23,7 @@ const nav: { href: string; label: MessageKey }[] = [
   { href: "/app/settings/members", label: "nav.members" },
   { href: "/app/settings/ai", label: "nav.ai" },
   { href: "/app/settings/crm", label: "nav.crm" },
+  { href: "/app/settings/enrichment", label: "nav.enrichment" },
   { href: "/app/settings/health", label: "nav.health" },
   { href: "/app/agency", label: "nav.agency" },
 ];

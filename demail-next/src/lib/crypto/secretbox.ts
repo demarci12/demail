@@ -36,7 +36,7 @@ export function open(sealed: string): string {
   }
   throw new Error("Could not open sealed value with the configured keys");
 }
-export type SealDomain = "ai-key" | "crm-token";
+export type SealDomain = "ai-key" | "crm-token" | "enrichment-key";
 // Per-domain keys derived with HKDF so an AI key or CRM token never opens as a mailbox token.
 function domainKey(raw: string, name: string, domain: SealDomain): Buffer {
   return Buffer.from(hkdfSync("sha256", toKey(raw, name), Buffer.alloc(0), `demail:${domain}:v1`, 32));

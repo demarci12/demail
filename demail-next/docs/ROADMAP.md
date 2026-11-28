@@ -30,7 +30,7 @@ Part 1 shipped:
 - Deliverability: bounce and complaint events, health bands that throttle or pause cold sending, SPF, DKIM and DMARC checks.
 - Warmup between your own Google and Microsoft mailboxes, with a ramp, human-delay replies and placement checks.
 Still open:
-- Blacklist (DNSBL) monitoring with auto-pause.
+- Blocklist (DNSBL) monitoring with opt-in auto-pause shipped for sending and portal domains. IP lists wait until sending IPs are known, and the custom tracking domain is still open.
 - Custom tracking domain.
 - Mailbox ramp-up schedule for cold sending.
 - Gmail rescue from spam, which needs the `gmail.modify` scope.

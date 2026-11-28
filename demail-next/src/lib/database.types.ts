@@ -2184,6 +2184,58 @@ export type Database = {
         };
         Relationships: [];
       };
+      dnsbl_results: {
+        Row: {
+          organization_id: string;
+          domain: string;
+          kind: 'sending' | 'portal';
+          list: string;
+          status: 'clean' | 'listed' | 'unknown';
+          answer: string | null;
+          listed_since: string | null;
+          checked_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          domain: string;
+          kind: 'sending' | 'portal';
+          list: string;
+          status: 'clean' | 'listed' | 'unknown';
+          answer?: string | null;
+          listed_since?: string | null;
+          checked_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['dnsbl_results']['Insert']>;
+        Relationships: [];
+      };
+      dnsbl_settings: {
+        Row: { organization_id: string; auto_pause: boolean; updated_at: string };
+        Insert: { organization_id: string; auto_pause?: boolean; updated_at?: string };
+        Update: { auto_pause?: boolean; updated_at?: string };
+        Relationships: [];
+      };
+      dnsbl_pauses: {
+        Row: {
+          organization_id: string;
+          domain: string;
+          active: boolean;
+          reason: string | null;
+          paused_at: string;
+          resumed_at: string | null;
+          resumed_by: string | null;
+        };
+        Insert: {
+          organization_id: string;
+          domain: string;
+          active?: boolean;
+          reason?: string | null;
+          paused_at?: string;
+          resumed_at?: string | null;
+          resumed_by?: string | null;
+        };
+        Update: Partial<Database['public']['Tables']['dnsbl_pauses']['Insert']>;
+        Relationships: [];
+      };
       portal_domains: {
         Row: {
           organization_id: string;
@@ -2229,6 +2281,7 @@ export type Database = {
         Args: { batch: number };
         Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
       };
+      dnsbl_due_targets: { Args: { p_limit: number; p_stale_hours: number }; Returns: { organization_id: string; domain: string; kind: string }[] };
       record_cron_heartbeat: { Args: { p_job: string; p_ok: boolean; p_ms: number }; Returns: undefined };
       contacts_to_verify: { Args: { p_limit: number }; Returns: { id: string; organization_id: string; email: string }[] };
       set_contact_verification: { Args: { p_org: string; p_results: Json }; Returns: number };

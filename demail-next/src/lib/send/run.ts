@@ -65,6 +65,12 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
     const { data: health } = await admin.from("mailbox_health").select("mailbox_id, band");
     for (const h of health ?? []) bands.set(h.mailbox_id, h.band);
   }
+  // Domains paused by a blocklist listing (opt-in per workspace). A read error leaves sending as it was.
+  const listedDomains = new Set<string>();
+  {
+    const { data: pauses } = await admin.from("dnsbl_pauses").select("organization_id, domain").eq("active", true);
+    for (const p of pauses ?? []) listedDomains.add(`${p.organization_id}|${p.domain}`);
+  }
   async function loadCampaign(id: string) {
     if (campaigns.has(id)) return campaigns.get(id)!;
     const { data: campaign } = await admin.from("campaigns").select("*").eq("id", id).maybeSingle();
@@ -332,7 +338,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
         continue;
       }
       const band = bands.get(m.id) ?? "healthy";
-      if (band === "paused") {
+      if (band === "paused" || listedDomains.has(`${m.organization_id}|${m.email.split("@")[1]?.toLowerCase()}`)) {
         retryAt = Math.min(retryAt, now.getTime() + DEFER_MS);
         healthBlocked = true;
         continue;

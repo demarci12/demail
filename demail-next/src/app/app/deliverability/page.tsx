@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { localDayStart } from "@/lib/send/schedule";
 import { dailyTarget, type Band } from "@/lib/warmup/plan";
-import { addDomain, checkDomainNow, removeDomain } from "./actions";
+import { addDomain, checkDomainNow, removeDomain, resumeDnsblDomain, setDnsblAutoPause } from "./actions";
 
 const BAND_STYLE: Record<string, string> = {
   healthy: "bg-emerald-100 text-emerald-800",
@@ -41,7 +41,7 @@ export default async function DeliverabilityPage({ searchParams }: { searchParam
   const { error, message } = await searchParams;
   const { supabase, org, user, canManage } = await getOrgContext();
   const now = new Date();
-  const [{ data: mailboxes }, { data: health }, { data: events }, { data: domains }, { data: warm }] = await Promise.all([
+  const [{ data: mailboxes }, { data: health }, { data: events }, { data: domains }, { data: warm }, { data: dnsbl }, { data: dnsblSettings }, { data: dnsblPauses }] = await Promise.all([
     supabase.from("mailboxes").select("id, email, provider, timezone, warmup_enabled, warmup_started_at").eq("organization_id", org.id).order("email"),
     supabase.from("mailbox_health").select("*").eq("organization_id", org.id),
     supabase.from("mailbox_health_events").select("mailbox_id, to_band, created_at").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(200),
@@ -52,7 +52,19 @@ export default async function DeliverabilityPage({ searchParams }: { searchParam
       .eq("organization_id", org.id)
       .gte("sent_at", new Date(now.getTime() - 7 * 86_400_000).toISOString())
       .limit(5000),
+    supabase.from("dnsbl_results").select("domain, kind, list, status, answer, checked_at").eq("organization_id", org.id).order("domain").order("list").limit(500),
+    supabase.from("dnsbl_settings").select("auto_pause").eq("organization_id", org.id).maybeSingle(),
+    supabase.from("dnsbl_pauses").select("domain, active, reason, paused_at").eq("organization_id", org.id).eq("active", true),
   ]);
+  const autoPause = dnsblSettings?.auto_pause ?? false;
+  const pausedDomains = new Map((dnsblPauses ?? []).map((p) => [p.domain, p]));
+  const byDomain = new Map<string, { kind: string; rows: NonNullable<typeof dnsbl> }>();
+  for (const r of dnsbl ?? []) {
+    const cur = byDomain.get(r.domain) ?? { kind: r.kind, rows: [] };
+    cur.rows.push(r);
+    byDomain.set(r.domain, cur);
+  }
+  const listedDomains = [...byDomain].filter(([, v]) => v.rows.some((r) => r.status === "listed"));
   const healthById = new Map((health ?? []).map((h) => [h.mailbox_id, h]));
   const warmRows = (mailboxes ?? [])
     .filter((m) => m.warmup_enabled)
@@ -166,6 +178,90 @@ export default async function DeliverabilityPage({ searchParams }: { searchParam
           </tbody>
         </table>
       </Card>
+      <h2 className="mt-2 text-lg font-semibold">Blocklists</h2>
+      <p className="text-sm text-slate-600">
+        Demail looks up your sending domains and verified portal domains on public DNS blocklists every few hours. A refused or failed lookup shows as unknown and is never read as a listing. A listing is a signal to investigate, not proof of a problem with your mail.
+      </p>
+      {listedDomains.map(([domain, v]) => {
+        const lists = v.rows.filter((r) => r.status === "listed").map((r) => r.list).join(", ");
+        const paused = pausedDomains.has(domain);
+        return (
+          <Card key={domain} className="flex flex-wrap items-center gap-3 border-red-200 bg-red-50">
+            <div className="text-sm text-red-900">
+              <span className="font-medium">{domain}</span> is listed on {lists}.{" "}
+              {paused ? "Cold sending from its mailboxes is paused." : v.kind !== "sending" ? "This is a portal domain, so no sending is affected." : autoPause ? "Cold sending pauses at the next check." : "Auto-pause is off, so sending continues."} Ask the list operator how to request removal, and fix the cause before you resume.
+            </div>
+            {paused && canManage && (
+              <form action={resumeDnsblDomain.bind(null, domain)} className="ml-auto">
+                <Button type="submit" variant="secondary">
+                  Resume sending
+                </Button>
+              </form>
+            )}
+          </Card>
+        );
+      })}
+      {[...pausedDomains.keys()].filter((d) => !listedDomains.some(([x]) => x === d)).map((domain) => (
+        <Card key={domain} className="flex flex-wrap items-center gap-3 border-amber-200 bg-amber-50">
+          <div className="text-sm text-amber-900">
+            Cold sending for <span className="font-medium">{domain}</span> is paused ({pausedDomains.get(domain)?.reason ?? "listed"}). The listing no longer shows, so you can resume.
+          </div>
+          {canManage && (
+            <form action={resumeDnsblDomain.bind(null, domain)} className="ml-auto">
+              <Button type="submit" variant="secondary">
+                Resume sending
+              </Button>
+            </form>
+          )}
+        </Card>
+      ))}
+      <Card className="p-0">
+        <table className="w-full text-sm">
+          <thead className="border-b border-slate-200 text-left text-xs text-slate-500">
+            <tr>
+              <th className="p-3">Domain</th>
+              <th className="p-3">Used for</th>
+              <th className="p-3">Lists</th>
+              <th className="p-3">Last checked</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...byDomain].map(([domain, v]) => (
+              <tr key={domain} className="border-b border-slate-100 last:border-0">
+                <td className="p-3">{domain}</td>
+                <td className="p-3 text-slate-600">{v.kind === "sending" ? "Sending" : "Portal"}</td>
+                <td className="flex flex-wrap gap-1 p-3">
+                  {v.rows.map((r) => (
+                    <Badge key={r.list} label={`${r.list}: ${r.status}`} style={r.status === "listed" ? "bg-red-100 text-red-800" : r.status === "clean" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"} />
+                  ))}
+                </td>
+                <td className="p-3 text-slate-500">{new Date(Math.max(...v.rows.map((r) => new Date(r.checked_at).getTime()))).toLocaleString()}</td>
+              </tr>
+            ))}
+            {byDomain.size === 0 && (
+              <tr>
+                <td className="p-3 text-slate-500" colSpan={4}>
+                  No results yet. The first check runs when the blocklist job from the setup guide is scheduled.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+      {canManage && (
+        <Card>
+          <form action={setDnsblAutoPause} className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="auto_pause" defaultChecked={autoPause} />
+              Pause cold sending from a domain while it is listed
+            </label>
+            <Button type="submit" variant="secondary">
+              Save
+            </Button>
+            <p className="w-full text-xs text-slate-500">Off by default. Warmup and replies are not affected. Resume a domain with one click once the listing is dealt with.</p>
+          </form>
+        </Card>
+      )}
       <h2 className="mt-2 text-lg font-semibold">Sending domains</h2>
       {(domains ?? []).length === 0 && <p className="text-sm text-slate-500">No domains yet. Domains of your mailboxes are added automatically, or add one below.</p>}
       {(domains ?? []).map((d) => {

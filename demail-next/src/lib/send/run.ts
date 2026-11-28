@@ -11,7 +11,7 @@ import { MailAuthError } from "@/lib/mail/credentials";
 import { sendThrough } from "@/lib/mail/send";
 import type { MailThread } from "@/lib/mail/types";
 import { localDayStart, nextWindowStart } from "./schedule";
-import { pickVariant } from "./variants";
+import { chooseVariant } from "./variants";
 import { branchTarget } from "./branch";
 type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
 type Campaign = Row<"campaigns">;
@@ -365,7 +365,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       continue;
     }
     const data = contactData(contact);
-    const variant = pickVariant(e.id, step.id, variants.get(step.id) ?? []);
+    const variant = chooseVariant(e.id, step, variants.get(step.id) ?? []);
     const subject = renderTemplate(variant?.subject ?? step.subject ?? "", data);
     const text = renderTemplate(variant?.body_plain ?? step.body_plain ?? "", data);
     // Variants are plain text, so only variant A uses the step's HTML body.

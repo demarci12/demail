@@ -10,8 +10,9 @@ import { sendStepTest } from "@/lib/send/test-send";
 import { aiCall, aiErrorMessage } from "@/lib/ai/run";
 import { stepDraftMessages } from "@/lib/ai/prompts";
 import { parseStepDraft } from "@/lib/ai/shared";
-import { cleanPath } from "@/lib/input";
+import { cleanPath, cleanText, isSafeCompany } from "@/lib/input";
 import type { Database } from "@/lib/database.types";
+import { RULE_INTENTS, RULE_TRIGGERS } from "@/lib/send/rules";
 import { BRANCH_ACTIONS, BRANCH_CONDITIONS, graphProblems, type BranchAction, type BranchCondition } from "@/lib/send/branch";
 const uuid = z.string().uuid();
 function back(id: string, key: "error" | "msg", message: string): never {
@@ -454,4 +455,81 @@ export async function enrollContacts(id: string, formData: FormData) {
   }
   revalidatePath(`/app/campaigns/${id}`);
   back(id, "msg", `Enrolled ${added} contacts. Unsubscribed and suppressed contacts are skipped.`);
+}
+
+const ruleSchema = z.object({
+  name: z.string(),
+  trigger: z.enum(RULE_TRIGGERS),
+  intents: z.array(z.enum(RULE_INTENTS)).max(7),
+  url_contains: z.string().max(300),
+  target: z.string().regex(/^(campaign|step):[0-9a-f-]{36}$/),
+});
+// Rules never touch the step graph, so they can be added while the campaign sends. They start off.
+export async function addRule(id: string, formData: FormData) {
+  const { supabase, org } = await editableCampaign(id);
+  const parsed = ruleSchema.safeParse({
+    name: cleanText(formData.get("name"), 200),
+    trigger: formData.get("trigger"),
+    intents: formData.getAll("intent").map(String),
+    url_contains: cleanText(formData.get("url_contains"), 300),
+    target: String(formData.get("target") ?? ""),
+  });
+  if (!parsed.success || !parsed.data.name || !isSafeCompany(parsed.data.name)) back(id, "error", "Check the rule name, trigger and target.");
+  const r = parsed.data!;
+  const [kind, targetId] = r.target.split(":");
+  if (!uuid.safeParse(targetId).success) back(id, "error", "Pick a target.");
+  if (r.trigger === "reply_intent" && r.intents.length === 0) back(id, "error", "Pick at least one reply type.");
+  const { error } = await supabase.from("campaign_rules").insert({
+    organization_id: org.id,
+    campaign_id: id,
+    name: r.name,
+    trigger: r.trigger,
+    intents: r.trigger === "reply_intent" ? r.intents : [],
+    url_contains: r.trigger === "link_click" && r.url_contains ? r.url_contains : null,
+    target_campaign_id: kind === "campaign" ? targetId : null,
+    target_step_id: kind === "step" ? targetId : null,
+  });
+  if (error) back(id, "error", "Could not add the rule. A campaign can have 20 rules, and the target must be another campaign of this workspace or a step of this one.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "Rule added. It is off until you switch it on.");
+}
+export async function setRuleEnabled(id: string, ruleId: string, enabled: boolean) {
+  const { supabase, org } = await editableCampaign(id);
+  if (!uuid.safeParse(ruleId).success) back(id, "error", "Rule not found.");
+  const { error } = await supabase.from("campaign_rules").update({ enabled }).eq("id", ruleId).eq("campaign_id", id).eq("organization_id", org.id);
+  if (error) back(id, "error", "Could not change the rule.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", enabled ? "Rule on. It acts on events from now on." : "Rule off.");
+}
+export async function deleteRule(id: string, ruleId: string) {
+  const { supabase, org } = await editableCampaign(id);
+  if (!uuid.safeParse(ruleId).success) back(id, "error", "Rule not found.");
+  await supabase.from("campaign_rules").delete().eq("id", ruleId).eq("campaign_id", id).eq("organization_id", org.id);
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", "Rule deleted.");
+}
+// Winner promotion is switched per email step and works while the campaign sends.
+export async function setPromotion(id: string, stepId: string, formData: FormData) {
+  const { supabase, org } = await editableCampaign(id);
+  const min = z.coerce.number().int().min(30).max(100000).safeParse(formData.get("min_sample"));
+  if (!min.success || !uuid.safeParse(stepId).success) back(id, "error", "The minimum sample is a whole number from 30 to 100000.");
+  const on = formData.get("promote") === "on";
+  const { error } = await supabase
+    .from("campaign_steps")
+    .update({ promote_winner: on, promote_min_sample: min.data! })
+    .eq("id", stepId)
+    .eq("campaign_id", id)
+    .eq("organization_id", org.id)
+    .eq("type", "email");
+  if (error) back(id, "error", "Could not save winner promotion.");
+  revalidatePath(`/app/campaigns/${id}`);
+  back(id, "msg", on ? "Winner promotion is on for this step." : "Winner promotion is off for this step.");
+}
+export async function undoPromotion(id: string, stepId: string) {
+  const { supabase } = await editableCampaign(id);
+  if (!uuid.safeParse(stepId).success) back(id, "error", "Step not found.");
+  const { data } = await supabase.rpc("undo_promotion", { p_step: stepId });
+  revalidatePath(`/app/campaigns/${id}`);
+  if (!data) back(id, "error", "Nothing to undo.");
+  back(id, "msg", "Promotion undone. Every variant sends again and promotion is off for this step.");
 }

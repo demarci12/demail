@@ -402,6 +402,11 @@ export type Database = {
           yes_step_id: string | null;
           no_action: string | null;
           no_step_id: string | null;
+          promote_winner: boolean;
+          promote_min_sample: number;
+          promoted_label: string | null;
+          promoted_at: string | null;
+          promotion_decision: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -423,6 +428,8 @@ export type Database = {
           yes_step_id?: string | null;
           no_action?: string | null;
           no_step_id?: string | null;
+          promote_winner?: boolean;
+          promote_min_sample?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -444,6 +451,8 @@ export type Database = {
           yes_step_id?: string | null;
           no_action?: string | null;
           no_step_id?: string | null;
+          promote_winner?: boolean;
+          promote_min_sample?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -473,6 +482,67 @@ export type Database = {
           campaign_id?: string;
           outcome?: boolean;
           decided_at?: string;
+        };
+        Relationships: [];
+      };
+      campaign_rules: {
+        Row: {
+          id: string;
+          organization_id: string;
+          campaign_id: string;
+          name: string;
+          trigger: string;
+          intents: string[];
+          url_contains: string | null;
+          target_campaign_id: string | null;
+          target_step_id: string | null;
+          enabled: boolean;
+          enabled_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          campaign_id: string;
+          name: string;
+          trigger: string;
+          intents?: string[];
+          url_contains?: string | null;
+          target_campaign_id?: string | null;
+          target_step_id?: string | null;
+          enabled?: boolean;
+        };
+        Update: {
+          name?: string;
+          intents?: string[];
+          url_contains?: string | null;
+          enabled?: boolean;
+        };
+        Relationships: [];
+      };
+      campaign_rule_moves: {
+        Row: {
+          id: string;
+          organization_id: string;
+          rule_id: string;
+          contact_id: string;
+          from_campaign_id: string;
+          outcome: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          rule_id: string;
+          contact_id: string;
+          from_campaign_id: string;
+          outcome: string;
+          created_at?: string;
+        };
+        Update: {
+          outcome?: string;
         };
         Relationships: [];
       };
@@ -2167,6 +2237,10 @@ export type Database = {
         Returns: Database["public"]["Tables"]["contacts"]["Row"][];
       };
       sync_live_segments: { Args: Record<string, never>; Returns: number };
+      evaluate_step_promotion: { Args: { p_step: string }; Returns: Json };
+      undo_promotion: { Args: { p_step: string }; Returns: boolean };
+      run_campaign_rules: { Args: Record<string, never>; Returns: number };
+      promote_variant_winners: { Args: Record<string, never>; Returns: number };
       decide_branch: { Args: { p_enrollment: string; p_step: string }; Returns: boolean };
       claim_due_mailbox_syncs: {
         Args: { batch: number; p_org?: string | null };

@@ -153,3 +153,7 @@ select cron.schedule(
   );
   $job$
 );
+
+-- demail-campaigns (every 5 minutes, SQL): campaign rules (subsequences) and winner promotion.
+select cron.unschedule('demail-campaigns') where exists (select 1 from cron.job where jobname = 'demail-campaigns');
+select cron.schedule('demail-campaigns', '*/5 * * * *', $job$ select public.run_campaign_rules(); select public.promote_variant_winners(); $job$);

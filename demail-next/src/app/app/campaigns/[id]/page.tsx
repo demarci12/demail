@@ -8,6 +8,9 @@ import { SAMPLE_CONTACT, contactData, renderTemplate, type MergeData } from "@/l
 import { cleanText } from "@/lib/input";
 import type { Database } from "@/lib/database.types";
 import { BRANCH_CONDITION_LABELS, type BranchCondition } from "@/lib/send/branch";
+import { parsePromotion, type PromotionState } from "@/lib/send/rules";
+import { PromotionPanel } from "./promotion";
+import { RulesCard, type RuleTarget } from "./rules";
 import { CampaignFields } from "../settings-fields";
 import { MergeInsert } from "../merge-insert";
 import { addBranch, addStep, addVariant, applyAiDraftAsStep, deleteStep, deleteVariant, discardAiDraft, draftStepWithAi, enrollContacts, launchCampaign, moveStep, pauseCampaign, saveSenders, sendTestStep, updateBranch, updateCampaign, updateStep, updateVariant } from "../actions";
@@ -245,6 +248,28 @@ export default async function CampaignPage({
     : { data: [] };
   const variantsByStep = new Map<string, NonNullable<typeof variantRows>>();
   for (const v of variantRows ?? []) variantsByStep.set(v.step_id, [...(variantsByStep.get(v.step_id) ?? []), v]);
+  const [{ data: ruleRows }, { data: moveRows }, { data: otherCampaigns }] = await Promise.all([
+    supabase.from("campaign_rules").select("*").eq("campaign_id", id).eq("organization_id", org.id).order("created_at"),
+    supabase.from("campaign_rule_moves").select("rule_id, outcome").eq("from_campaign_id", id).eq("organization_id", org.id).limit(10000),
+    supabase.from("campaigns").select("id, name, status").eq("organization_id", org.id).neq("id", id).neq("status", "completed").order("name").limit(200),
+  ]);
+  const moveCounts = new Map<string, Record<string, number>>();
+  for (const m of moveRows ?? []) {
+    const c = moveCounts.get(m.rule_id) ?? {};
+    c[m.outcome] = (c[m.outcome] ?? 0) + 1;
+    moveCounts.set(m.rule_id, c);
+  }
+  const ruleTargets: RuleTarget[] = [
+    ...(otherCampaigns ?? []).map((c) => ({ value: `campaign:${c.id}`, label: `Campaign: ${cleanText(c.name, 100)}` })),
+    ...(steps ?? []).filter((s) => s.type !== "branch").map((s) => ({ value: `step:${s.id}`, label: `This campaign, ${stepLabel(s, (steps ?? []).indexOf(s) + 1)}` })),
+  ];
+  // The live state of every promotion test; a failed lookup shows no verdict instead of breaking the page.
+  const promotion = new Map<string, PromotionState | null>();
+  for (const s of steps ?? []) {
+    if (s.type !== "email" || !(variantsByStep.get(s.id) ?? []).some((v) => v.active)) continue;
+    const { data } = await supabase.rpc("evaluate_step_promotion", { p_step: s.id });
+    promotion.set(s.id, parsePromotion(data));
+  }
   const stats = engagement?.[0];
   const sentCount = Number(stats?.sent ?? 0);
   const pct = (n: number) => (sentCount > 0 ? `${Math.round((n / sentCount) * 100)}%` : "0%");
@@ -487,6 +512,9 @@ export default async function CampaignPage({
                     </Button>
                   </form>
                 )}
+                {s.type === "email" && stepVariants.some((v) => v.active) && (
+                  <PromotionPanel campaignId={id} step={s} state={promotion.get(s.id) ?? null} decided={parsePromotion(s.promotion_decision)} />
+                )}
                 {s.type === "email" && (
                   <form action={addVariant.bind(null, id, s.id)} className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-3">
                     <h3 className="text-sm font-medium">Add variant</h3>
@@ -652,6 +680,7 @@ export default async function CampaignPage({
           <Button type="submit">Enroll</Button>
         </form>
       </Card>
+      <RulesCard campaignId={id} rules={ruleRows ?? []} targets={ruleTargets} moveCounts={moveCounts} aiOn={aiSettings?.enabled === true} />
       <Card>
         <h2 className="mb-3 font-medium">Settings</h2>
         <form action={updateCampaign.bind(null, id)} className="flex flex-col gap-3">

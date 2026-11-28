@@ -10,10 +10,9 @@ Part 1 shipped:
 - A pre-launch review of blank merge fields and unsubscribed leads.
 Shipped later:
 - Branching steps on opened, clicked and replied shipped in Phase 5 part 5.
+- Subsequences (rules on classified replies, meeting requests and link clicks) and opt-in winner promotion by reply rate, in the campaigns line. Upgrade: migrations `003900` and `003910`, then re-run `schedule.sql` for `demail-campaigns`.
 Still open:
-- Subsequences.
 - Attachments, which need Storage, size limits under the Vercel body limit and MIME parts for three providers.
-- Promoting a winning variant automatically.
 
 ## Phase 3: more mailboxes and replies
 Shipped:

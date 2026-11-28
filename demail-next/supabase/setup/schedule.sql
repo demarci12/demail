@@ -136,3 +136,20 @@ select cron.schedule(
 );
 select cron.unschedule('demail-purge') where exists (select 1 from cron.job where jobname = 'demail-purge');
 select cron.schedule('demail-purge', '17 3 * * *', $job$ select public.purge_old_events(); $job$);
+-- demail-forms: every minute, sends form notifications and double opt-in links and removes files of deleted submissions. Idempotent, so re-running this file is safe.
+select cron.unschedule('demail-forms') where exists (select 1 from cron.job where jobname = 'demail-forms');
+select cron.schedule(
+  'demail-forms',
+  '* * * * *',
+  $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'demail_app_url') || '/api/cron/forms',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'demail_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $job$
+);

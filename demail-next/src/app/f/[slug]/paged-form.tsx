@@ -56,7 +56,7 @@ export function PagedForm({
     invalid.reportValidity();
   };
   return (
-    <form ref={formRef} method="post" action={action} noValidate onSubmit={onSubmit} className="flex flex-col gap-3">
+    <form ref={formRef} method="post" encType="multipart/form-data" action={action} noValidate onSubmit={onSubmit} className="flex flex-col gap-3">
       {pages.length > 1 ? (
         <p className={`text-xs ${mutedClass}`} aria-live="polite">
           Step {current + 1} of {pages.length}

@@ -1652,6 +1652,9 @@ export type Database = {
           label_id: string | null;
           campaign_id: string | null;
           daily_limit: number;
+          notify_enabled: boolean;
+          double_opt_in: boolean;
+          mail_mailbox_id: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -1676,6 +1679,9 @@ export type Database = {
           label_id?: string | null;
           campaign_id?: string | null;
           daily_limit?: number;
+          notify_enabled?: boolean;
+          double_opt_in?: boolean;
+          mail_mailbox_id?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1700,6 +1706,9 @@ export type Database = {
           label_id?: string | null;
           campaign_id?: string | null;
           daily_limit?: number;
+          notify_enabled?: boolean;
+          double_opt_in?: boolean;
+          mail_mailbox_id?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1715,6 +1724,7 @@ export type Database = {
           answers: Json;
           consented: boolean;
           enrolled: boolean;
+          optin_confirmed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -1725,6 +1735,7 @@ export type Database = {
           answers: Json;
           consented?: boolean;
           enrolled?: boolean;
+          optin_confirmed_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1735,6 +1746,7 @@ export type Database = {
           answers?: Json;
           consented?: boolean;
           enrolled?: boolean;
+          optin_confirmed_at?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -1760,6 +1772,171 @@ export type Database = {
           bucket?: string;
           window_start?: string;
           hits?: number;
+        };
+        Relationships: [];
+      };
+      form_notify_recipients: {
+        Row: {
+          organization_id: string;
+          form_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          form_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          organization_id?: string;
+          form_id?: string;
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      form_confirmations: {
+        Row: {
+          id: string;
+          organization_id: string;
+          form_id: string;
+          contact_id: string;
+          submission_id: string;
+          contact_was_pending: boolean;
+          expires_at: string;
+          confirmed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          form_id: string;
+          contact_id: string;
+          submission_id: string;
+          contact_was_pending?: boolean;
+          expires_at?: string;
+          confirmed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          form_id?: string;
+          contact_id?: string;
+          submission_id?: string;
+          contact_was_pending?: boolean;
+          expires_at?: string;
+          confirmed_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      form_mail_jobs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          form_id: string;
+          submission_id: string;
+          kind: "confirm" | "notify";
+          confirmation_id: string | null;
+          recipient_user_id: string | null;
+          status: "pending" | "sent" | "failed" | "skipped";
+          attempts: number;
+          next_attempt_at: string;
+          last_error: string | null;
+          sent_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          form_id: string;
+          submission_id: string;
+          kind: "confirm" | "notify";
+          confirmation_id?: string | null;
+          recipient_user_id?: string | null;
+          status?: "pending" | "sent" | "failed" | "skipped";
+          attempts?: number;
+          next_attempt_at?: string;
+          last_error?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          form_id?: string;
+          submission_id?: string;
+          kind?: "confirm" | "notify";
+          confirmation_id?: string | null;
+          recipient_user_id?: string | null;
+          status?: "pending" | "sent" | "failed" | "skipped";
+          attempts?: number;
+          next_attempt_at?: string;
+          last_error?: string | null;
+          sent_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      form_files: {
+        Row: {
+          id: string;
+          organization_id: string;
+          form_id: string;
+          submission_id: string;
+          field_key: string;
+          storage_path: string;
+          original_name: string;
+          content_type: string;
+          size_bytes: number;
+          status: "pending" | "stored" | "failed";
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          form_id: string;
+          submission_id: string;
+          field_key: string;
+          storage_path: string;
+          original_name: string;
+          content_type: string;
+          size_bytes: number;
+          status?: "pending" | "stored" | "failed";
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          form_id?: string;
+          submission_id?: string;
+          field_key?: string;
+          storage_path?: string;
+          original_name?: string;
+          content_type?: string;
+          size_bytes?: number;
+          status?: "pending" | "stored" | "failed";
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      form_file_deletions: {
+        Row: {
+          id: number;
+          storage_path: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          storage_path: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          storage_path?: string;
+          created_at?: string;
         };
         Relationships: [];
       };
@@ -2065,6 +2242,15 @@ export type Database = {
       submit_form: {
         Args: { p_form: string; p_bucket: string; p_contact: Json; p_answers: Json; p_consented: boolean };
         Returns: string;
+      };
+      submit_form_files: {
+        Args: { p_form: string; p_bucket: string; p_contact: Json; p_answers: Json; p_consented: boolean; p_files: Json };
+        Returns: Json;
+      };
+      confirm_form_optin: { Args: { p_confirmation: string }; Returns: string };
+      claim_form_mail: {
+        Args: { batch: number };
+        Returns: Database["public"]["Tables"]["form_mail_jobs"]["Row"][];
       };
       my_workspaces: {
         Args: Record<string, never>;

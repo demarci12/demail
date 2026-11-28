@@ -7,7 +7,7 @@ import { FIELD_TYPES, MAPS_TO, cleanText, normalizeRedirectUrl, parseFields, typ
 const LIST = "/app/forms";
 const uuid = z.string().uuid();
 const FIELD_RULES =
-  "Could not save the field. Keys use lowercase letters, digits and underscores, dropdowns need options, checkboxes map to a custom field or nothing, each contact field is mapped once, and the form keeps one required email field mapped to Email.";
+  "Could not save the field. Keys use lowercase letters, digits and underscores, dropdowns need options, checkboxes map to a custom field or nothing, each contact field is mapped once, a file field only keeps the answer (up to 3 per form), and the form keeps one required email field mapped to Email.";
 const fail = (message: string): never => redirect(`${LIST}?error=${encodeURIComponent(message)}`);
 function back(id: string, key: "error" | "msg", message: string): never {
   revalidatePath(`${LIST}/${id}`);
@@ -159,4 +159,41 @@ export async function deleteForm(id: string) {
   if (error) return back(id, "error", "Could not delete the form.");
   revalidatePath(LIST);
   return redirect(`${LIST}?msg=${encodeURIComponent("Form deleted with its submissions. Contacts stay.")}`);
+}
+
+// Mail settings are owner and admin only (the database enforces it too): notifications to members and double opt-in links to visitors, both off by default.
+export async function saveFormMail(id: string, formData: FormData) {
+  const { supabase, org, canManage } = await loadForm(id);
+  if (!canManage) return back(id, "error", "Only owners and admins can change form mail settings.");
+  const notify_enabled = formData.get("notify_enabled") === "on";
+  const double_opt_in = formData.get("double_opt_in") === "on";
+  const rawMailbox = String(formData.get("mail_mailbox_id") ?? "");
+  let mail_mailbox_id: string | null = null;
+  if (rawMailbox) {
+    if (!uuid.safeParse(rawMailbox).success) return back(id, "error", "Pick a mailbox from the list.");
+    const { data: mailbox } = await supabase.from("mailboxes").select("id").eq("id", rawMailbox).eq("organization_id", org.id).eq("status", "active").maybeSingle();
+    if (!mailbox) return back(id, "error", "Pick an active mailbox from the list.");
+    mail_mailbox_id = mailbox.id;
+  }
+  if ((notify_enabled || double_opt_in) && !mail_mailbox_id) return back(id, "error", "Pick the mailbox that sends this form's mail.");
+  const picked = [...new Set(formData.getAll("recipient").map(String))].filter((r) => uuid.safeParse(r).success);
+  if (picked.length > 5) return back(id, "error", "Pick at most 5 recipients.");
+  let recipients: string[] = [];
+  if (picked.length) {
+    const { data: members } = await supabase.from("organization_members").select("user_id").eq("organization_id", org.id).in("user_id", picked);
+    recipients = (members ?? []).map((m) => m.user_id);
+  }
+  if (notify_enabled && recipients.length === 0) return back(id, "error", "Pick at least one member to notify.");
+  const { error } = await supabase.from("forms").update({ notify_enabled, double_opt_in, mail_mailbox_id }).eq("id", id).eq("organization_id", org.id);
+  if (error) return back(id, "error", "Could not save the mail settings.");
+  const keep = recipients.length ? `(${recipients.join(",")})` : "(00000000-0000-0000-0000-000000000000)";
+  const { error: delError } = await supabase.from("form_notify_recipients").delete().eq("form_id", id).eq("organization_id", org.id).not("user_id", "in", keep);
+  if (recipients.length) {
+    const { error: addError } = await supabase
+      .from("form_notify_recipients")
+      .upsert(recipients.map((user_id) => ({ organization_id: org.id, form_id: id, user_id })), { onConflict: "form_id,user_id", ignoreDuplicates: true });
+    if (addError) return back(id, "error", "Could not save the recipients.");
+  }
+  if (delError) return back(id, "error", "Could not save the recipients.");
+  return back(id, "msg", "Mail settings saved.");
 }

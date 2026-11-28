@@ -16,7 +16,7 @@ export type SendOutcome =
   | { ok: true; id: string }
   | { ok: false; retryable: boolean; message: string };
 let client: Resend | null = null;
-// Every mail carries List-Unsubscribe and the RFC 8058 one-click header.
+// Campaign mail carries List-Unsubscribe and the RFC 8058 one-click header.
 export async function sendMail(mail: OutgoingMail): Promise<SendOutcome> {
   client ??= new Resend(serverEnv().RESEND_API_KEY);
   try {
@@ -28,10 +28,10 @@ export async function sendMail(mail: OutgoingMail): Promise<SendOutcome> {
         subject: mail.subject,
         text: mail.text,
         html: mail.html,
-        headers: {
-          "List-Unsubscribe": `<${mail.oneClickUrl}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
+        // System mail (form notices, double opt-in links) passes no unsubscribe address and gets no header.
+        headers: mail.oneClickUrl
+          ? { "List-Unsubscribe": `<${mail.oneClickUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" }
+          : undefined,
       },
       { idempotencyKey: mail.idempotencyKey },
     );

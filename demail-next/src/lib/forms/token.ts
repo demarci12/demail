@@ -41,3 +41,17 @@ export function clientIp(req: Request): string | null {
     .filter(Boolean);
   return chain.length >= hops ? chain[chain.length - hops] : null;
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// Double opt-in link token: <confirmation id>.<base64url hmac>; single use and expiry are enforced by confirm_form_optin.
+export function signConfirmToken(confirmationId: string) {
+  return `${confirmationId}.${hmac(`c:${confirmationId}`).toString("base64url")}`;
+}
+export function verifyConfirmToken(token: string): string | null {
+  if (token.length > 100) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2 || !UUID_RE.test(parts[0])) return null;
+  const expected = Buffer.from(hmac(`c:${parts[0]}`).toString("base64url"));
+  const got = Buffer.from(parts[1]);
+  return expected.length === got.length && timingSafeEqual(expected, got) ? parts[0] : null;
+}

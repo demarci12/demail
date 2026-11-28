@@ -9,6 +9,7 @@ import { BrandFooter, BrandLogo } from "@/components/public-brand";
 import { getPublicBranding } from "@/lib/branding";
 import { formsEnv, turnstileEnabled } from "@/lib/env";
 import { signFillToken } from "@/lib/forms/token";
+import { FILE_ACCEPT } from "@/lib/forms/files";
 import { formPages, normalizeRedirectUrl, parseFields, type FormField } from "@/lib/input";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PagedForm } from "./paged-form";
@@ -24,6 +25,8 @@ const ERRORS: Record<string, string> = {
   expired: "This page was open too long or sent too fast. Try again.",
   rate: "Too many submissions. Try again later.",
   closed: "This form is not accepting submissions.",
+  filetype: "That file type is not accepted. Use a PDF, PNG, JPEG, WebP or plain text file.",
+  filesize: "That file is too large. The limit is 3 MB per file.",
   failed: "Something went wrong. Try again.",
 };
 type Theme = { main: string; surface: string | null; text: string; muted: string; input: string };
@@ -71,6 +74,8 @@ function FieldInput({ field, cls }: { field: FormField; cls: string }) {
           ))}
         </Select>
       );
+    case "file":
+      return <Input type="file" name={name} required={field.required} accept={FILE_ACCEPT} className={cls} />;
     case "email":
       return <Input type="email" name={name} required={field.required} maxLength={320} autoComplete="email" placeholder={placeholder} className={cls} />;
     case "tel":
@@ -150,7 +155,7 @@ export default async function PublicFormPage({ params, searchParams }: { params:
     const pages = focus ? fields.map((f) => [f]) : formPages(fields);
     if (pages.length === 1 && !focus) {
       body = (
-        <form method="post" action={`/api/forms/${slug}`} className="flex flex-col gap-3">
+        <form method="post" encType="multipart/form-data" action={`/api/forms/${slug}`} className="flex flex-col gap-3">
           {errorAlert}
           {fields.map((f) => (
             <FieldRow key={f.key} field={f} theme={theme} />

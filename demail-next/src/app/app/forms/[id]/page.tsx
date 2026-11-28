@@ -6,7 +6,8 @@ import { FIELD_TYPES, FIELD_TYPE_LABELS, MAPS_TO, MAPS_TO_LABELS, parseFields, t
 import { Alert, Card, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { addField, deleteForm, moveField, removeField, saveForm, updateField } from "../actions";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { addField, deleteForm, moveField, removeField, saveForm, saveFormMail, updateField } from "../actions";
 const textarea = "w-full rounded-md border border-slate-300 bg-white p-3 text-sm focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100";
 function FieldControls({ field }: { field?: FormField }) {
   return (
@@ -35,6 +36,7 @@ function FieldControls({ field }: { field?: FormField }) {
       <Field label="Placeholder">
         <Input name="placeholder" maxLength={100} defaultValue={field?.placeholder ?? ""} />
       </Field>
+      <p className="col-span-2 text-xs text-slate-500">File upload fields keep the file with the submission (PDF, PNG, JPEG, WebP or text, up to 3 MB; set Saves to: Only keep the answer).</p>
       <Field label="Dropdown options, one per line">
         <textarea name="options" rows={3} defaultValue={(field?.options ?? []).join("\n")} className={textarea} />
       </Field>
@@ -54,11 +56,18 @@ export default async function FormPage({ params, searchParams }: { params: Promi
   const { supabase, org, canManage } = await getOrgContext();
   const { data: form } = await supabase.from("forms").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!form) notFound();
-  const [{ data: labels }, { data: campaigns }, { count: submissions }] = await Promise.all([
+  const [{ data: labels }, { data: campaigns }, { count: submissions }, { data: mailboxes }, { data: members }, { data: recipientRows }] = await Promise.all([
     supabase.from("labels").select("id, name").eq("organization_id", org.id).order("name"),
     supabase.from("campaigns").select("id, name, status").eq("organization_id", org.id).order("created_at", { ascending: false }),
     supabase.from("form_submissions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("form_id", form.id),
+    supabase.from("mailboxes").select("id, email").eq("organization_id", org.id).eq("status", "active").order("email"),
+    canManage ? supabase.from("organization_members").select("user_id").eq("organization_id", org.id).order("created_at").limit(25) : Promise.resolve({ data: [] as { user_id: string }[] }),
+    supabase.from("form_notify_recipients").select("user_id").eq("form_id", form.id).eq("organization_id", org.id),
   ]);
+  // Member addresses are shown to owners and admins only, to pick who is notified.
+  const admin = canManage ? createAdminClient() : null;
+  const people = admin ? await Promise.all((members ?? []).map(async (m) => ({ id: m.user_id, email: (await admin.auth.admin.getUserById(m.user_id)).data.user?.email ?? "Unknown member" }))) : [];
+  const picked = new Set((recipientRows ?? []).map((r) => r.user_id));
   const fields = parseFields(form.fields) ?? [];
   const url = `${publicEnv().NEXT_PUBLIC_APP_URL.replace(/\/+$/, "")}/f/${form.slug}`;
   const embed = `<iframe src="${url}?embed=1" width="100%" height="640" style="border:0" title="Form"></iframe>`;
@@ -173,6 +182,48 @@ export default async function FormPage({ params, searchParams }: { params: Promi
           </div>
         </form>
       </Card>
+      {canManage && (
+        <Card className="flex flex-col gap-3">
+          <h2 className="font-medium">Mail from this form</h2>
+          <p className="text-xs text-slate-600">
+            Both options are off until you turn them on. They send through the mailbox you pick, count against its daily limit and stay within 200 form mails a day for the workspace.
+          </p>
+          <form action={saveFormMail.bind(null, form.id)} className="flex flex-col gap-3">
+            <Field label="Send from mailbox">
+              <Select name="mail_mailbox_id" defaultValue={form.mail_mailbox_id ?? ""}>
+                <option value="">No mailbox</option>
+                {(mailboxes ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.email}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="notify_enabled" defaultChecked={form.notify_enabled ?? false} /> Email chosen members when someone submits
+            </label>
+            <fieldset className="flex flex-col gap-1 text-sm">
+              <legend className="mb-1 text-xs font-medium text-slate-600">Members to notify (up to 5, at most 20 submissions a day)</legend>
+              {people.map((p) => (
+                <label key={p.id} className="flex items-center gap-2">
+                  <input type="checkbox" name="recipient" value={p.id} defaultChecked={picked.has(p.id)} /> {p.email}
+                </label>
+              ))}
+            </fieldset>
+            <p className="text-xs text-slate-600">The email is plain text: the contact, the answers, the names of uploaded files and a link to the submissions page.</p>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="double_opt_in" defaultChecked={form.double_opt_in ?? false} /> Double opt-in: ask visitors to confirm their address
+            </label>
+            <p className="text-xs text-slate-600">
+              A new contact stays unsubscribed, with no label and no campaign enrollment, until the visitor opens the link in the email and clicks Confirm. The link works once and expires after 72 hours.
+              Contacts who unsubscribed earlier get no email and are never resubscribed.
+            </p>
+            <div>
+              <Button type="submit">Save mail settings</Button>
+            </div>
+          </form>
+        </Card>
+      )}
       <Card className="flex flex-col gap-4">
         <h2 className="font-medium">Fields</h2>
         <ul className="flex flex-col gap-4">

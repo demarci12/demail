@@ -117,7 +117,7 @@ export function cleanPath(raw: unknown): string | null {
   const s = cleanText(cut, 300);
   return s.startsWith("/") ? s : null;
 }
-export const FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "checkbox"] as const;
+export const FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "checkbox", "file"] as const;
 export type FieldType = (typeof FIELD_TYPES)[number];
 export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   text: "Short text",
@@ -126,6 +126,7 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
   textarea: "Long text",
   select: "Dropdown",
   checkbox: "Checkbox",
+  file: "File upload",
 };
 export const MAPS_TO = ["email", "first_name", "last_name", "company", "phone", "custom", "none"] as const;
 export type MapsTo = (typeof MAPS_TO)[number];
@@ -156,6 +157,7 @@ export function parseFields(raw: unknown): FormField[] | null {
   const mapped = new Set<MapsTo>();
   const out: FormField[] = [];
   let emailFields = 0;
+  let fileFields = 0;
   for (const item of raw) {
     if (!item || typeof item !== "object" || Array.isArray(item)) return null;
     const f = item as Record<string, unknown>;
@@ -167,6 +169,8 @@ export function parseFields(raw: unknown): FormField[] | null {
     const type = f.type as FieldType;
     const maps_to = f.maps_to as MapsTo;
     if (type === "checkbox" && maps_to !== "custom" && maps_to !== "none") return null;
+    // A file is only kept with the submission; at most 3 per form (the upload limit is per request).
+    if (type === "file" && (maps_to !== "none" || ++fileFields > 3)) return null;
     if (maps_to !== "custom" && maps_to !== "none") {
       if (mapped.has(maps_to)) return null;
       mapped.add(maps_to);
@@ -234,6 +238,8 @@ export function validateSubmission(fields: FormField[], get: (name: string) => s
   const custom: Record<string, string | boolean> = {};
   const contact: Omit<SubmissionContact, "custom_fields"> = { email: "" };
   for (const f of fields) {
+    // Files are read from the multipart body by the route, never as text.
+    if (f.type === "file") continue;
     const raw = get(`f_${f.key}`);
     if (f.type === "checkbox") {
       const checked = raw === "on";

@@ -158,6 +158,48 @@ export type Database = {
         Update: { job?: string; last_run_at?: string; last_ok_at?: string | null; last_ok?: boolean; last_ms?: number | null; runs?: number };
         Relationships: [];
       };
+      segments: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          rules: Json;
+          campaign_id: string | null;
+          live: boolean;
+          last_synced_at: string | null;
+          last_enrolled: number;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          name: string;
+          rules?: Json;
+          campaign_id?: string | null;
+          live?: boolean;
+          last_synced_at?: string | null;
+          last_enrolled?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          name?: string;
+          rules?: Json;
+          campaign_id?: string | null;
+          live?: boolean;
+          last_synced_at?: string | null;
+          last_enrolled?: number;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       labels: {
         Row: {
           id: string;
@@ -1943,6 +1985,11 @@ export type Database = {
       record_cron_heartbeat: { Args: { p_job: string; p_ok: boolean; p_ms: number }; Returns: undefined };
       contacts_to_verify: { Args: { p_limit: number }; Returns: { id: string; organization_id: string; email: string }[] };
       set_contact_verification: { Args: { p_org: string; p_results: Json }; Returns: number };
+      contacts_search: {
+        Args: { p_org: string; p_rules: Json | null; p_extra: Json | null; p_q: string | null };
+        Returns: Database["public"]["Tables"]["contacts"]["Row"][];
+      };
+      sync_live_segments: { Args: Record<string, never>; Returns: number };
       decide_branch: { Args: { p_enrollment: string; p_step: string }; Returns: boolean };
       claim_due_mailbox_syncs: {
         Args: { batch: number; p_org?: string | null };

@@ -9,6 +9,7 @@ import { Select } from "@/components/ui/input";
 
 const nav = [
   { href: "/app/contacts", label: "Contacts" },
+  { href: "/app/segments", label: "Segments" },
   { href: "/app/unibox", label: "Unibox" },
   { href: "/app/campaigns", label: "Campaigns" },
   { href: "/app/forms", label: "Forms" },

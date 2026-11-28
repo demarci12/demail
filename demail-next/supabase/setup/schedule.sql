@@ -2,7 +2,7 @@
 -- 1. Replace the two placeholders below.
 -- 2. Run the whole file. Re-running replaces the jobs and the stored secrets.
 -- Jobs: demail-send, demail-sync, demail-warmup and demail-ai (every minute, HTTP), demail-crm (every 5 minutes, HTTP),
--- demail-domains (hourly, HTTP), demail-verify (every 2 minutes, HTTP), demail-health (every 5 minutes, SQL: health bands and warmup planning) and demail-purge (daily 03:17, SQL).
+-- demail-domains (hourly, HTTP), demail-verify (every 2 minutes, HTTP), demail-health (every 5 minutes, SQL: health bands and warmup planning), demail-segments (every 5 minutes, SQL: live segment links) and demail-purge (daily 03:17, SQL).
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;
 create extension if not exists supabase_vault with schema vault;
@@ -52,6 +52,8 @@ select cron.schedule(
 );
 select cron.unschedule('demail-health') where exists (select 1 from cron.job where jobname = 'demail-health');
 select cron.schedule('demail-health', '*/5 * * * *', $job$ select public.refresh_mailbox_health(); select public.plan_warmup_jobs(); $job$);
+select cron.unschedule('demail-segments') where exists (select 1 from cron.job where jobname = 'demail-segments');
+select cron.schedule('demail-segments', '*/5 * * * *', $job$ select public.sync_live_segments(); $job$);
 select cron.unschedule('demail-domains') where exists (select 1 from cron.job where jobname = 'demail-domains');
 select cron.schedule(
   'demail-domains',

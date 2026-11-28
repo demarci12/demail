@@ -60,6 +60,7 @@ Not included yet: subsequences, attachments, SMTP/IMAP mailboxes, enrichment, CR
 8. **Create your account.** Open the app, sign up, confirm your email, and create your first workspace. Add a mailbox, import contacts, build a campaign, select the sender, enroll contacts and launch.
 
 If you skip step 7, `vercel.json` still calls the same route once a day. That is enough to try the app, not to send on a schedule.
+
 ## Upgrading
 1. **Apply new migrations first.** Run `supabase db push` from `demail-next/`, or paste each new file in `supabase/migrations/` into the SQL editor in filename order. Never edit a migration that is already applied; changes always come as a new file.
 2. **Then deploy the new app code** to Vercel.
@@ -162,6 +163,7 @@ To run a tick locally:
 ```
 curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/sync
 ```
+
 ## Open and click tracking
 
 - **Toggles.** Each campaign has Track opens and Track clicks, on by default for new campaigns. Existing campaigns keep their previous behavior (off).
@@ -179,6 +181,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Reply attribution.** A thread's first reply is credited to the last campaign message sent to that contact at or before the reply. Only Google and Microsoft mailboxes report replies, so Resend senders show none.
 - **Bounce attribution.** Bounces come from `delivery_events` matched to a sent message.
 - **Opens.** Open counts remain an estimate, for the reasons in Open and click tracking.
+
 ## Conditions
 - **What a condition checks.** Opened: a counted open or click on mail of this campaign to the contact. Clicked: a counted click on mail of this campaign. Replied: a human reply in a thread of this campaign and contact (auto replies and bounces do not count). Visited site: a stored page view of a visitor linked to the contact, optionally on one tracker and under a path prefix such as `/pricing`. Every condition only looks at what happened since the contact was enrolled.
 - **Checked once.** A condition is checked when the contact reaches it and the answer is recorded for that contact and step, so a retry or a second tick always takes the same path. Nothing is sent at a condition step. Put a wait step before a condition so there is time to open, click, reply or visit.
@@ -189,11 +192,13 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Results.** The campaign page shows Yes and No counts on each condition.
 - **Existing campaigns.** A campaign without conditions runs exactly as before.
 - **Rollback.** After a rollback to the previous release, campaigns with conditions wait and send nothing until the upgrade returns; campaigns without conditions keep sending. Do not edit condition steps on the previous release.
+
 ## Pre-launch review and test sends
 - **Review.** Open Review on a campaign (`/app/campaigns/<id>/review`). It lists the email step count, active enrollments, and each sender with its status and health band, flagging no sender, a disconnected or paused mailbox, and a throttled or paused band. For each email step and variant it lists enrolled contacts with no value for a merge field that has no fallback (up to 20, with the total), and it lists enrolled contacts who are unsubscribed or suppressed.
 - **It does not block launch.** Launch checks only for an email step, a sender and conditions that move forward. When its turn comes, an enrollment with a blank merge field fails and an unsubscribed or suppressed one is skipped, as before.
 - **Test sends.** Each email step has Send test. It renders the step or chosen variant against the same sample contact as the preview and sends it from the mailbox you pick, only to your own sign-in address, with the subject starting `[Test]`.
 - **What a test is not.** A test has no open or click tracking, is not stored as a campaign message and does not count in the results. Its unsubscribe links point at a placeholder that changes nothing. Tests are not counted in `INSTANCE_DAILY_SEND_CAP`, but tests from a Resend sender do count toward Resend's own daily quota. Two identical clicks within the same minute send once through Resend; changing the mailbox, subject or body sends again.
+
 ## AI (bring your own key)
 - **Off by default.** A workspace has AI off until an owner or admin turns it on in Settings, AI (`/app/settings/ai`). Members see the status, the key source and today's call count, but cannot change them.
 - **One adapter.** Demail calls `POST <base URL>/chat/completions` in the OpenAI format, so OpenAI, OpenRouter, Groq, Ollama or any other OpenAI-compatible provider works. There is no extra npm dependency.
@@ -214,6 +219,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Where it shows.** The unibox list shows the latest intent of each thread as a chip and can be filtered by intent; a thread shows the intent and the summary under each classified reply.
 - **No action is taken.** A verdict never stops an enrollment, suppresses a contact or answers anyone. Stop on reply and unsubscribes work exactly as before. A verdict can be wrong, so read the reply before you act on it.
 - **Scheduling.** The `demail-ai` job (`POST /api/cron/ai`, every minute) classifies up to 10 replies per run within a 45 second budget.
+
 ## HubSpot sync
 - **Connect.** In HubSpot, open Settings, Integrations, Private apps and create a private app with the scopes `crm.objects.contacts.read` and `crm.objects.contacts.write`; this works on free HubSpot. An owner or admin pastes its access token in Settings, CRM (`/app/settings/crm`). The token is checked against HubSpot, sealed under a key derived from `MAILBOX_ENCRYPTION_KEY` (so storing one needs that variable) and kept in a table only the service role can read. Only its last four characters are shown, and it never appears in logs, errors or pages.
 - **Pull.** Contacts changed in HubSpot since the last sync are read, oldest change first, up to 500 per run. A new email address creates a Demail contact, optionally with a label you choose. An existing contact only gets its empty fields filled (first name, last name, company, phone); a value already in Demail is never overwritten. Contacts without a valid email address are skipped.
@@ -223,17 +229,26 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Duplicates.** The push position is saved after each note, so a crash between creating a note and saving can add that one note twice.
 - **Same-millisecond limit.** The pull position is HubSpot's last modified time in milliseconds. If more than 500 contacts share one exact millisecond, the sync steps past it and some of them are not read until they change again.
 - **Disconnect.** Disconnect removes the token and every link between Demail and HubSpot contacts. Your Demail contacts and the notes in HubSpot stay. Connecting a token for a different HubSpot account clears the old links and pulls again from the start.
+
 ## Workspace home and setup health
 - **Home.** `/app` shows a stats strip (contacts, active campaigns, mail sent and replies in the last 7 days) and a Getting started checklist: connect a mailbox, add contacts, write a campaign, launch it and, for owners and admins, start the scheduler. Each step links to the page that does it, and the checklist gives way to a short note once every step is done.
 - **Setup health.** `/app/settings/health` (owners and admins) lists which required and optional settings this instance has and a heartbeat table for the HTTP scheduler jobs (send, sync, warmup, ai, crm, domains): running, late after three missed runs (at least five minutes), last run failed, or never ran. It reports only whether a setting exists, never its value. Each `/api/cron/*` route writes its heartbeat through the service role into `cron_heartbeats`, which no member role can read or write. The SQL jobs `demail-health` and `demail-purge` do not report.
 - **Errors and empty lists.** A failing dashboard page shows a retry card inside the navigation with a digest to quote, unknown addresses show a not found page, and the campaigns, forms, mailboxes and suppression lists explain what they hold and the next step.
 - **Upgrade.** Apply `20260101003500_cron_heartbeats.sql`, then deploy. If the app is deployed first, the routes still run (the heartbeat write fails quietly) and the health page says the table is missing. After a rollback the table stays and nothing reads it.
+
 ## Email verification
 - **What it checks.** Syntax as mail servers read it, a bundled list of disposable inbox domains, a mail server for the domain (MX, with the address record as fallback), role addresses (`info@`, `sales@`), free providers and common typos with a "Did you mean" suggestion. There is no SMTP probe, so a mailbox that does not exist on a working domain still passes.
 - **Results.** `valid`, `risky` (role address or likely typo), `invalid` (bad syntax, disposable, no mail server) and `unknown` (the lookup timed out, tried again after a day). A lookup that fails never marks an address invalid.
 - **When it runs.** After a CSV import the import page checks the new addresses in slices of 50. The `demail-verify` job (`POST /api/cron/verify`, every 2 minutes, up to 200 contacts) checks anything without a result and rechecks results older than 90 days. Verify now on a contact page runs it on demand. Editing an address clears its result.
 - **Effect on sending.** Invalid addresses are never enrolled (a database trigger on `campaign_contacts` drops the row for `enroll_contacts` and for hosted-form enrollment), an enrollment whose address turns invalid later is stopped by the sender, and the pre-launch review lists it as "invalid address". The contact page shows the badge. Members cannot write results; only the service role does.
 - **Upgrade.** Apply `20260101003600_email_verification.sql`, deploy, then re-run `supabase/setup/schedule.sql` to add `demail-verify`. Without the job, imports and Verify now still work. After a rollback to the previous release the columns stay and invalid addresses are still dropped at enrollment by the trigger.
+
+## Contacts list and segments
+- **Contacts list.** `/app/contacts` searches email, name and company, filters by label, subscription, company and saved segment, pages 50 at a time, and acts on the ticked rows (up to 100): add or remove a label, enroll in a campaign that has not completed, or delete (owners and admins). Export CSV downloads every contact the current filters show, up to 50,000 rows, and quotes any cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return so a spreadsheet does not run it as a formula.
+- **Segments.** `/app/segments` saves a rule document: match all or any of up to 10 conditions on email, name, company or phone (contains, does not contain, is, starts with, is empty, is not empty), subscription, label (has or does not have) and the date added (before or after). Search text is matched literally, so `%` and `_` are not wildcards. Owners and admins create, change and delete segments; every member can read them and use them in the contacts list.
+- **Enroll now.** A segment page enrolls every subscribed match into a chosen campaign through `enroll_contacts`, so unsubscribed, suppressed and already enrolled contacts are skipped.
+- **Live link.** A segment can link a campaign and turn the live link on (off by default). The `demail-segments` SQL job (every 5 minutes) then enrolls new matches, up to 5,000 per segment per run. While it is on, matching contacts receive that campaign's email once it is active, with no further click. Deleting the campaign unlinks the segment.
+- **Upgrade.** Apply `20260101003700_segments.sql`, deploy, then re-run `supabase/setup/schedule.sql` to add `demail-segments`. Without the job, segments, the contacts list and Enroll now still work; only the live link stays idle. After a rollback to the previous release the segments table stays unused.
 
 ## Hosted forms
 - **Building.** Members create forms under Forms (`/app/forms`). Each field maps to a contact field (email, first name, last name, company, phone), to a custom field, or only keeps the answer. A form can add a label to every contact it brings in, carries a title, intro, consent text, accent color, a card or plain layout, a theme, focus mode and an optional redirect after submit, and goes live when you publish it. Unpublishing closes it at once.
@@ -251,6 +266,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
   - When the chosen header is missing, all visitors share one bucket as well.
 - **Untrusted input.** Names refuse links, web and email addresses and hostnames, company names refuse markup and links, control, bidi and zero-width characters are removed, and lengths are capped. Text answers mapped to a custom field become merge fields in campaign mail, so they refuse links, web and email addresses, hostnames, tags and merge braces; dropdown answers are the form's own options and are kept as they are; an email answer mapped to a custom field is kept in the submission only, not in the contact's custom fields. Everything a visitor types is shown as plain text, in the dashboard and in the submissions list.
 - **Data.** No IP address is stored. A rate bucket holds a keyed hash of the form, the address prefix and the day, and buckets older than a day are deleted by the form's next submission. Deleting a contact deletes its submissions.
+
 ## Website tracking
 - **Adding the snippet.** Owners and admins create up to 5 trackers per workspace under Website (`/app/website`); members see them read-only. A tracker lists 1 to 10 domains, and a page on a listed domain or any subdomain of it counts. Paste the two-line snippet the page shows into every page of your site. It loads `<NEXT_PUBLIC_APP_URL>/w.js` with the tracker's public key and consent mode. Single-page apps call `demail('page')` after each navigation; otherwise each page load sends one view.
 - **Consent.** Ask first (the default) records nothing and stores nothing in the browser until your site calls `demail('consent', true)`, typically from its cookie banner after the visitor agrees, and the endpoint refuses views of an ask-first tracker that do not carry that consent. Record on load counts visits straight away, for sites that already have a legal basis. In both modes `demail('consent', false)` opts the visitor out and removes the stored visitor id. A browser that sends Global Privacy Control (`navigator.globalPrivacyControl`, `Sec-GPC: 1`) is never recorded in either mode. Nothing here is a legal opinion; decide with your own adviser which mode your site needs.
@@ -260,6 +276,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Where visits show.** The Website page lists views in the last 7 days per tracker and the last 50 visits of the workspace; a contact's activity lists their visits as `Visited <host><path>`. Paths and hosts come from strangers, so they are checked when written and shown as plain text.
 - **Your site's Content Security Policy** must allow the script from your Demail address (`script-src`) and the endpoint (`connect-src`).
 - **Retention and erasure.** Each tracker keeps visits for 1 to 365 days (90 by default). The daily purge deletes older views, visitors not seen within that window and rate buckets older than a day. Deleting a contact deletes its linked visitors and their views; deleting a tracker deletes all of its visitors and views.
+
 ## Agencies
 - **Turning a workspace into an agency.** An owner opens Agency (`/app/agency`) and turns the workspace into an agency. A client workspace cannot become an agency, so there is one level only. Agency mode can be turned off again once no client workspaces are left.
 - **Client workspaces.** Owners and admins of an agency create a workspace for each client from the agency page. A client workspace has the same features and data isolation as any other workspace. A workspace joins an agency when the agency creates it or when an owner of an existing workspace accepts an invitation from the agency.
@@ -269,11 +286,13 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Client owners and leaving.** A client can have its own members, invited from its Members page, which notes that agency staff can open it too. An owner of the client workspace can leave the agency from its Agency page, and an agency owner can release a client. Both need the client to have at least one owner of its own, so no workspace is left without an owner. Afterwards agency staff no longer reach it and its own members keep everything.
 - **Names across workspaces.** Agency names are shown to client members, client names to agency staff and brand names to every client member. The database refuses workspace and brand names with control, invisible or bidi characters, tags, `@`, `://` or `www.` whenever a name is set or changed, whichever path writes it, and the dashboard also refuses hostnames. Names from another workspace are cleaned again when shown, and one that fails the name check shows a neutral label instead ("Client workspace", "your agency", or Demail for a brand).
 - **Rollback.** Going back to the previous release keeps agency staff's database access to client rows, but its switcher lists only direct memberships until you upgrade again. No data is lost.
+
 ## White-label
 - **Who sets it.** Owners and admins of an agency workspace open Branding (`/app/settings/branding`, linked from the agency page). Other members see the settings read-only. Client workspaces use their agency's branding and cannot set their own.
 - **What it changes.** In the dashboard of the agency and of every client workspace: the sidebar name and logo instead of Demail, a 3 pixel accent border on the sidebar header, the browser tab title and icon, the support, privacy and terms links at the bottom of the sidebar, and the Powered by Demail line, which you can hide. Hosted forms of these workspaces show the logo above the form, the privacy and terms links below it and the Powered by line unless hidden; each form keeps its own accent color. The unsubscribe page of contacts in these workspaces shows the logo, the privacy and terms links and the accent color on its button, and the tab title and icon follow the brand.
 - **Logo.** The logo is an https address, not an upload. Every viewer's browser loads it from that host (with no referrer), so pick a host you trust that stays online. Links must be full https addresses, and the brand name passes the same check as other names.
 - **Not changed yet.** Sender names stay as they are; branded sender names are still open. The sign-in page shows the brand on a custom portal domain (see below).
+
 ## Custom portal domain
 - **What it changes.** An agency can serve sign-in on a hostname of its own, such as `portal.youragency.com`, one hostname per agency. On that hostname the sign-in and sign-up pages show the agency logo, "Sign in to <brand>" and "Create your <brand> account", the accent color on the button, the privacy and terms links and the Powered by line unless hidden, and the tab title and icon follow the brand. `/` goes straight to the sign-in page, and the dashboard works there too with each workspace's usual branding. Anyone may sign in there; which workspaces a user can open does not change. Without a branding row the pages look as on the main address.
 - **Agency steps.** An owner or admin of the agency opens Branding (`/app/settings/branding`), adds the hostname under Custom domain and publishes the TXT record it shows: name `_demail.<hostname>`, value `demail-verify=<token>`. Check now looks the record up (at most once a minute per domain) and marks the domain verified. Other members see the card read-only. To change the hostname, remove it and add the new one, which issues a new token. A hostname is unique only among verified domains, so an unverified claim never blocks the real owner, and a second agency cannot verify a hostname another one already verified.
@@ -284,6 +303,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **What keeps the main address.** Links in mail (tracking, unsubscribe), invitation and agency invitation links, client connect links, hosted form links and the website snippet use `NEXT_PUBLIC_APP_URL`. Connecting a Google or Microsoft mailbox from a portal hostname leads back to the Mailboxes page with a note to connect from the main address, because the providers return only to their registered redirect URIs. Supabase Auth emails keep their own template and sender.
 - **Sessions are per host.** Signing in on the portal hostname does not sign you in on the main address, or the other way around. A sign-up confirmation and the auth callback return to the hostname the user signed up on. The `demail_reader` cookie that keeps your own opens and clicks from counting is per host as well, and tracking links use the main address, so staff who work only on the portal hostname should sign in on the main address once a month in the browser they read mail in. Until they do, their own opens and clicks of client mail count, and a counted click on a tracked site can link their browser to that contact.
 - **Host trust.** The hostname is read from the `Host` header and used only when it matches a verified domain of an agency workspace. Any other host, or a failed lookup, gets the main address and no brand, so a forged header can neither brand an unverified host nor send a confirmation link to one.
+
 ## Shared limits for agencies
 - **Who sets them.** Owners and admins of an agency set them in the Shared limits card on the agency page, and a cap per client in its row of the client list. Client members see their caps, this month's usage and whether a pool is used up on their own Agency page. Every limit is unset by default, which means no limit.
 - **Monthly window.** Usage is counted per UTC calendar month and starts again on the first of the month.
@@ -291,6 +311,7 @@ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/c
 - **Sharing the agency AI key.** Off by default, because the agency's AI provider bills every call made with it. When an owner or admin turns it on, a client workspace with no key of its own uses the agency key, with the agency base URL and model. The client still needs AI turned on, the agency needs AI turned on and a stored key, and the client's daily limit still applies.
 - **AI pool and caps.** The monthly AI pool counts the agency's own calls with its workspace key and its clients' calls with the agency key. A client's monthly AI cap counts that client's calls with the agency key. A client's own key and the instance key are not counted against the agency.
 - **Overshoot.** The send tick reads the remaining pool once per workspace per tick and counts down in memory, so two overlapping ticks can send at most one batch more than the limit.
+
 ## Deliverability
 Bands and checks are guidance based on your own sending. Nothing here guarantees inbox placement or improves a sender reputation.
 - **Window and rates.** Each mailbox is scored over the last 7 days. Bounce and complaint rates divide by the larger of messages sent and 20, so a new mailbox with a few bounces still trips. `refresh_mailbox_health()` runs every 5 minutes from `schedule.sql`.
@@ -305,6 +326,7 @@ Bands and checks are guidance based on your own sending. Nothing here guarantees
 - **Resend webhook.** In the Resend dashboard add a webhook at `<NEXT_PUBLIC_APP_URL>/api/webhooks/resend` for `email.bounced` and `email.complained`, then set `RESEND_WEBHOOK_SECRET` to its signing secret. The Svix signature is verified and timestamps older than 5 minutes are rejected.
 - **Domain checks.** `/app/deliverability` lists the domains of your mailboxes and any you add. `/api/cron/domains` rechecks each one every 24 hours, and Check now runs it at most once a minute per domain. SPF passes with a single record that ends in `~all` or `-all` and includes the provider (Google, Microsoft). DMARC needs a `v=DMARC1` record with a policy. The page shows the records to publish, merging the provider include into an existing SPF record.
 - **DKIM caveat.** The DKIM selector is chosen by the provider and cannot be discovered from DNS. The check tries `google`, `selector1`, `selector2`, `resend` and the selector you set, and reports unknown when none answers.
+
 ## Warmup
 Warmup sends ordinary conversations between the Google and Microsoft mailboxes of one workspace. Turn it on per mailbox on the Mailboxes page. It needs at least two active Google or Microsoft mailboxes with warmup on. Placement results describe what happened to the mail. Nothing here guarantees inbox placement or improves a sender reputation.
 - **How it works.** `plan_warmup_jobs()` runs every 5 minutes from `schedule.sql` and plans the day's start jobs for each mailbox at random times inside its workday. `/api/cron/warmup` runs every minute, claims due jobs with `FOR UPDATE SKIP LOCKED` and executes them. A start job picks a partner among the other enabled mailboxes, avoiding the last 5 partners, and a hand-written conversation neither mailbox saw in the last 60 days, falling back to the least recently seen one. Mail goes out through the mailbox's own Gmail or Graph API as plain text with no tracking and no unsubscribe footer.
@@ -317,6 +339,7 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 - **Provider limits.** Warmup volume counts toward Gmail and Microsoft sending limits in addition to the cold daily limit of the mailbox.
 - **Library edits.** A conversation's key comes from its theme, subject and first message. An edited conversation keeps its old key in `previousKeys`, so threads in flight on it continue and the 60 day repeat window still holds.
 - **Self-hosted limit.** An instance only warms between its own mailboxes in one workspace. A shared public pool is left for later.
+
 ## Design decisions
 
 - **Directory name.** The rewrite lives in `demail-next/` next to the Go code, as its own pnpm project with its own lockfile.
@@ -341,6 +364,7 @@ Warmup sends ordinary conversations between the Google and Microsoft mailboxes o
 3. Each mailbox is rewritten under the new key the next time its token refreshes (about hourly while it is used).
 4. Remove `MAILBOX_ENCRYPTION_KEY_PREVIOUS` once every connected mailbox has synced or sent since step 2.
 If the key is lost and there is no previous key, stored tokens cannot be opened and each mailbox must be reconnected.
+
 ## Known limitations
 - SMTP and IMAP mailboxes are not supported. Use Gmail, Microsoft or Resend.
 - Only replies to Demail campaign mail (and mail sent from the unibox) are stored. The rest of a connected inbox is never read into the database.

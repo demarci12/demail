@@ -34,3 +34,6 @@ create table public.recipient_hosts (
 alter table public.recipient_hosts enable row level security;
 revoke all on public.recipient_hosts from anon, authenticated;
 grant select, insert, update, delete on public.recipient_hosts to service_role;
+
+-- Trigger function: no client role may call it through RPC (firing a trigger does not check EXECUTE).
+revoke all on function public.stamp_mailbox_ramp() from public, anon, authenticated;

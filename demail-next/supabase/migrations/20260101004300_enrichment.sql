@@ -236,3 +236,6 @@ revoke all on function public.guard_contact_consensus(), public.reserve_enrichme
   public.set_contact_enrichment(uuid, jsonb), public.set_contact_consensus(uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.reserve_enrichment_call(uuid), public.set_contact_enrichment(uuid, jsonb),
   public.set_contact_consensus(uuid, jsonb) to service_role;
+
+-- Signed-in users reach these tables only through the RLS policies above; anon reaches none of them.
+revoke all on public.enrichment_settings, public.enrichment_providers, public.enrichment_usage, public.contact_enrichment from anon;

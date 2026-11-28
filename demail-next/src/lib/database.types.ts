@@ -111,6 +111,10 @@ export type Database = {
           verify_suggestion: string | null;
           verify_flags: string[];
           verified_at: string | null;
+          consensus_status: string | null;
+          consensus_votes: number | null;
+          consensus_catch_all: boolean;
+          consensus_at: string | null;
         };
         Insert: {
           id?: string;
@@ -130,6 +134,10 @@ export type Database = {
           verify_suggestion?: string | null;
           verify_flags?: string[];
           verified_at?: string | null;
+          consensus_status?: string | null;
+          consensus_votes?: number | null;
+          consensus_catch_all?: boolean;
+          consensus_at?: string | null;
         };
         Update: {
           id?: string;
@@ -149,6 +157,10 @@ export type Database = {
           verify_suggestion?: string | null;
           verify_flags?: string[];
           verified_at?: string | null;
+          consensus_status?: string | null;
+          consensus_votes?: number | null;
+          consensus_catch_all?: boolean;
+          consensus_at?: string | null;
         };
         Relationships: [];
       };
@@ -242,6 +254,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      recipient_hosts: {
+        Row: {
+          domain: string;
+          esp: string;
+          checked_at: string;
+        };
+        Insert: {
+          domain: string;
+          esp: string;
+          checked_at?: string;
+        };
+        Update: {
+          domain?: string;
+          esp?: string;
+          checked_at?: string;
+        };
+        Relationships: [];
+      };
       mailboxes: {
         Row: {
           id: string;
@@ -269,6 +299,10 @@ export type Database = {
           warmup_end: string;
           warmup_filter_tag_enabled: boolean;
           warmup_filter_tag: string | null;
+          ramp_enabled: boolean;
+          ramp_start: number;
+          ramp_step: number;
+          ramp_started_at: string | null;
         };
         Insert: {
           id?: string;
@@ -296,6 +330,10 @@ export type Database = {
           warmup_end?: string;
           warmup_filter_tag_enabled?: boolean;
           warmup_filter_tag?: string | null;
+          ramp_enabled?: boolean;
+          ramp_start?: number;
+          ramp_step?: number;
+          ramp_started_at?: string | null;
         };
         Update: {
           id?: string;
@@ -323,6 +361,10 @@ export type Database = {
           warmup_end?: string;
           warmup_filter_tag_enabled?: boolean;
           warmup_filter_tag?: string | null;
+          ramp_enabled?: boolean;
+          ramp_start?: number;
+          ramp_step?: number;
+          ramp_started_at?: string | null;
         };
         Relationships: [];
       };
@@ -341,6 +383,8 @@ export type Database = {
           unsubscribe_header: boolean;
           track_opens: boolean;
           track_clicks: boolean;
+          skip_holidays: boolean;
+          esp_matching: boolean;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -359,6 +403,8 @@ export type Database = {
           unsubscribe_header?: boolean;
           track_opens?: boolean;
           track_clicks?: boolean;
+          skip_holidays?: boolean;
+          esp_matching?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -377,6 +423,8 @@ export type Database = {
           unsubscribe_header?: boolean;
           track_opens?: boolean;
           track_clicks?: boolean;
+          skip_holidays?: boolean;
+          esp_matching?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -1299,6 +1347,36 @@ export type Database = {
         };
         Relationships: [];
       };
+      enrichment_settings: {
+        Row: { organization_id: string; enabled: boolean; daily_call_limit: number; created_at: string; updated_at: string };
+        Insert: { organization_id: string; enabled?: boolean; daily_call_limit?: number; created_at?: string; updated_at?: string };
+        Update: { organization_id?: string; enabled?: boolean; daily_call_limit?: number; created_at?: string; updated_at?: string };
+        Relationships: [];
+      };
+      enrichment_providers: {
+        Row: { id: string; organization_id: string; role: "enrich" | "verify"; kind: "hunter" | "apollo" | "millionverifier" | "http"; label: string; base_url: string | null; position: number; enabled: boolean; created_at: string };
+        Insert: { id?: string; organization_id: string; role: "enrich" | "verify"; kind: "hunter" | "apollo" | "millionverifier" | "http"; label: string; base_url?: string | null; position?: number; enabled?: boolean; created_at?: string };
+        Update: { id?: string; organization_id?: string; role?: "enrich" | "verify"; kind?: "hunter" | "apollo" | "millionverifier" | "http"; label?: string; base_url?: string | null; position?: number; enabled?: boolean; created_at?: string };
+        Relationships: [];
+      };
+      enrichment_credentials: {
+        Row: { provider_id: string; organization_id: string; ciphertext: string; key_hint: string; updated_at: string };
+        Insert: { provider_id: string; organization_id: string; ciphertext: string; key_hint: string; updated_at?: string };
+        Update: { provider_id?: string; organization_id?: string; ciphertext?: string; key_hint?: string; updated_at?: string };
+        Relationships: [];
+      };
+      enrichment_usage: {
+        Row: { organization_id: string; day: string; calls: number };
+        Insert: { organization_id: string; day: string; calls?: number };
+        Update: { organization_id?: string; day?: string; calls?: number };
+        Relationships: [];
+      };
+      contact_enrichment: {
+        Row: { contact_id: string; organization_id: string; field: "email" | "phone"; value: string; source: string; found_at: string };
+        Insert: { contact_id: string; organization_id: string; field: "email" | "phone"; value: string; source: string; found_at?: string };
+        Update: { contact_id?: string; organization_id?: string; field?: "email" | "phone"; value?: string; source?: string; found_at?: string };
+        Relationships: [];
+      };
       ai_credentials: {
         Row: {
           organization_id: string;
@@ -2184,6 +2262,58 @@ export type Database = {
         };
         Relationships: [];
       };
+      dnsbl_results: {
+        Row: {
+          organization_id: string;
+          domain: string;
+          kind: 'sending' | 'portal';
+          list: string;
+          status: 'clean' | 'listed' | 'unknown';
+          answer: string | null;
+          listed_since: string | null;
+          checked_at: string;
+        };
+        Insert: {
+          organization_id: string;
+          domain: string;
+          kind: 'sending' | 'portal';
+          list: string;
+          status: 'clean' | 'listed' | 'unknown';
+          answer?: string | null;
+          listed_since?: string | null;
+          checked_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['dnsbl_results']['Insert']>;
+        Relationships: [];
+      };
+      dnsbl_settings: {
+        Row: { organization_id: string; auto_pause: boolean; updated_at: string };
+        Insert: { organization_id: string; auto_pause?: boolean; updated_at?: string };
+        Update: { auto_pause?: boolean; updated_at?: string };
+        Relationships: [];
+      };
+      dnsbl_pauses: {
+        Row: {
+          organization_id: string;
+          domain: string;
+          active: boolean;
+          reason: string | null;
+          paused_at: string;
+          resumed_at: string | null;
+          resumed_by: string | null;
+        };
+        Insert: {
+          organization_id: string;
+          domain: string;
+          active?: boolean;
+          reason?: string | null;
+          paused_at?: string;
+          resumed_at?: string | null;
+          resumed_by?: string | null;
+        };
+        Update: Partial<Database['public']['Tables']['dnsbl_pauses']['Insert']>;
+        Relationships: [];
+      };
       portal_domains: {
         Row: {
           organization_id: string;
@@ -2229,9 +2359,13 @@ export type Database = {
         Args: { batch: number };
         Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
       };
+      dnsbl_due_targets: { Args: { p_limit: number; p_stale_hours: number }; Returns: { organization_id: string; domain: string; kind: string }[] };
       record_cron_heartbeat: { Args: { p_job: string; p_ok: boolean; p_ms: number }; Returns: undefined };
       contacts_to_verify: { Args: { p_limit: number }; Returns: { id: string; organization_id: string; email: string }[] };
       set_contact_verification: { Args: { p_org: string; p_results: Json }; Returns: number };
+      reserve_enrichment_call: { Args: { p_org: string }; Returns: boolean };
+      set_contact_enrichment: { Args: { p_org: string; p_results: Json }; Returns: number };
+      set_contact_consensus: { Args: { p_org: string; p_results: Json }; Returns: number };
       contacts_search: {
         Args: { p_org: string; p_rules: Json | null; p_extra: Json | null; p_q: string | null };
         Returns: Database["public"]["Tables"]["contacts"]["Row"][];

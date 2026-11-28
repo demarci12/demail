@@ -6,8 +6,9 @@ import { Alert, Card, EmptyState, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { localDayStart } from "@/lib/send/schedule";
+import { rampLimit } from "@/lib/send/ramp";
 import { dailyTarget, type Band } from "@/lib/warmup/plan";
-import { addMailbox, deleteMailbox, revokeConnectLink, setMailboxStatus, setWarmup, setWarmupFilterTag, setWarmupWindow } from "./actions";
+import { addMailbox, deleteMailbox, revokeConnectLink, setMailboxStatus, setRamp, setWarmup, setWarmupFilterTag, setWarmupWindow } from "./actions";
 import { ConnectLinkForm } from "./connect-link-form";
 const BAND_STYLE: Record<string, string> = {
   healthy: "bg-emerald-100 text-emerald-800",
@@ -174,6 +175,30 @@ export default async function MailboxesPage({ searchParams }: { searchParams: Pr
                   </td>
                 </tr>
               )}
+              <tr className="border-b border-slate-100 last:border-0">
+                <td colSpan={7} className="flex flex-col gap-2 px-3 pb-3 text-xs text-slate-600">
+                  <div>
+                    Cold ramp {m.ramp_enabled ? `on: ${rampLimit({ enabled: true, start: m.ramp_start, step: m.ramp_step, startedAt: m.ramp_started_at }, m.daily_limit, now)} a day now, up to ${m.daily_limit}` : "off: the daily limit applies from the first day"}
+                  </div>
+                  {canManage && (
+                    <form action={setRamp.bind(null, m.id)} className="flex flex-wrap items-end gap-2">
+                      <label className="flex items-center gap-1 pb-2">
+                        <input type="checkbox" name="ramp_enabled" defaultChecked={m.ramp_enabled} />
+                        Ramp up cold sending
+                      </label>
+                      <Field label="Start per day (week 1)">
+                        <Input name="ramp_start" type="number" min={1} max={5000} defaultValue={m.ramp_start} required />
+                      </Field>
+                      <Field label="Add per week">
+                        <Input name="ramp_step" type="number" min={0} max={5000} defaultValue={m.ramp_step} required />
+                      </Field>
+                      <Button type="submit" variant="secondary">
+                        Save ramp
+                      </Button>
+                    </form>
+                  )}
+                </td>
+              </tr>
               </Fragment>
               );
             })}

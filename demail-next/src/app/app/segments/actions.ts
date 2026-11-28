@@ -6,6 +6,7 @@ import { getOrgContext } from "@/lib/org";
 import { cleanText } from "@/lib/input";
 import type { Json } from "@/lib/database.types";
 import { readRules, rulesFromForm } from "@/lib/segments/rules";
+import { consensusVerify, enrichContacts, MAX_PER_CLICK } from "@/lib/enrichment/run";
 
 const uuid = z.string().uuid();
 const MAX_ENROLL = 50000;
@@ -84,4 +85,24 @@ export async function enrollSegment(id: string, formData: FormData) {
   }
   revalidatePath(`/app/campaigns/${camp.id}`);
   go(here, "msg", `Enrolled ${added} of ${ids.length} matching contacts. Unsubscribed, suppressed and already enrolled contacts are skipped.`);
+}
+
+// Paid provider calls for the first matches of a segment, only on this click and capped per click and per day.
+export async function enrichSegment(id: string, formData: FormData) {
+  const { supabase, org } = await getOrgContext();
+  const here = `/app/segments/${id}`;
+  const op = String(formData.get("op") ?? "");
+  if (!uuid.safeParse(id).success || !["phone", "email", "consensus"].includes(op)) go(here, "error", "Pick an action.");
+  const { data: seg } = await supabase.from("segments").select("rules").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (!seg) go(here, "error", "Segment not found.");
+  const { data, error } = await supabase
+    .rpc("contacts_search", { p_org: org.id, p_rules: readRules(seg!.rules) as unknown as Json, p_extra: null, p_q: null })
+    .select("id")
+    .range(0, MAX_PER_CLICK - 1);
+  if (error) go(here, "error", "Could not read the segment.");
+  const ids = (data ?? []).map((c) => c.id);
+  if (ids.length === 0) go(here, "error", "No contacts match this segment.");
+  const out = op === "consensus" ? await consensusVerify(org.id, ids) : await enrichContacts(org.id, ids, [op === "phone" ? "phone" : "email"]);
+  revalidatePath(here);
+  go(here, out.ok ? "msg" : "error", out.message);
 }

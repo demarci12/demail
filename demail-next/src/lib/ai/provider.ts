@@ -25,7 +25,7 @@ export type AiMessage = { role: "system" | "user" | "assistant"; content: string
 export type AiConfig = { baseUrl: string; apiKey: string; model: string; checkHost: boolean };
 export type AiOptions = { maxTokens: number; temperature: number };
 const MAX_RESPONSE_CHARS = 500_000;
-async function assertPublicHost(baseUrl: string): Promise<string> {
+export async function assertPublicHost(baseUrl: string): Promise<string> {
   const checked = checkBaseUrl(baseUrl);
   if (!checked.ok) throw new AiError("url");
   const host = new URL(checked.url).hostname.replace(/^\[|\]$/g, "");

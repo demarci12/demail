@@ -8,6 +8,7 @@ export const HEARTBEAT_JOBS = [
   { job: "verify", label: "Email verification", everySeconds: 120 },
   { job: "forms", label: "Form mail and files", everySeconds: 60 },
   { job: "domains", label: "Domain checks", everySeconds: 3600 },
+  { job: "dnsbl", label: "Blocklist checks", everySeconds: 1800 },
 ] as const;
 
 export type JobState = "never" | "ok" | "late" | "failing";

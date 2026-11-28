@@ -113,6 +113,24 @@ export async function setWarmupFilterTag(id: string, enabled: boolean) {
   await supabase.from("mailboxes").update({ warmup_filter_tag_enabled: enabled, warmup_filter_tag: tag }).eq("id", id).eq("organization_id", org.id);
   revalidatePath("/app/mailboxes");
 }
+const rampSchema = z.object({ ramp_enabled: z.boolean(), ramp_start: z.coerce.number().int().min(1).max(5000), ramp_step: z.coerce.number().int().min(0).max(5000) });
+// The ramp restarts from week 1 each time it is switched on. The mailbox daily limit and health band still apply.
+export async function setRamp(id: string, formData: FormData) {
+  const { supabase, org, canManage } = await getOrgContext();
+  if (!canManage) return fail("Only owners and admins can change the ramp.");
+  const parsed = rampSchema.safeParse({ ramp_enabled: formData.get("ramp_enabled") === "on", ramp_start: formData.get("ramp_start"), ramp_step: formData.get("ramp_step") });
+  if (!parsed.success) return fail("Enter a start of 1 to 5000 a day and a weekly step of 0 to 5000.");
+  const { data: m } = await supabase.from("mailboxes").select("ramp_enabled").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (!m) return fail("Mailbox not found.");
+  const restart = parsed.data.ramp_enabled && !m.ramp_enabled;
+  const { error } = await supabase
+    .from("mailboxes")
+    .update({ ...parsed.data, ...(restart ? { ramp_started_at: new Date().toISOString() } : {}) })
+    .eq("id", id)
+    .eq("organization_id", org.id);
+  if (error) return fail("Could not save the ramp.");
+  revalidatePath("/app/mailboxes");
+}
 export type ConnectLinkState = { link?: string; error?: string };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const intIn = (min: number, max: number, fallback: number) =>

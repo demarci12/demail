@@ -135,6 +135,9 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
               <option value="label_add">{t("contacts.bulk.label_add")}</option>
               <option value="label_remove">{t("contacts.bulk.label_remove")}</option>
               <option value="enroll">{t("contacts.bulk.enroll")}</option>
+              <option value="enrich_phone">{t("contacts.bulk.enrich_phone")}</option>
+              <option value="enrich_email">{t("contacts.bulk.enrich_email")}</option>
+              <option value="consensus">{t("contacts.bulk.consensus")}</option>
               {canManage && <option value="delete">{t("contacts.bulk.delete")}</option>}
             </Select>
             <Select name="label" defaultValue="" className="w-44" aria-label={t("contacts.bulk.labelFor")}>

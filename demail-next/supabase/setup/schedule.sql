@@ -157,3 +157,21 @@ select cron.schedule(
 -- demail-campaigns (every 5 minutes, SQL): campaign rules (subsequences) and winner promotion.
 select cron.unschedule('demail-campaigns') where exists (select 1 from cron.job where jobname = 'demail-campaigns');
 select cron.schedule('demail-campaigns', '*/5 * * * *', $job$ select public.run_campaign_rules(); select public.promote_variant_winners(); $job$);
+
+-- demail-dnsbl: every 30 minutes, checks the stalest sending and portal domains against public DNS blocklists and applies opt-in auto-pause. Idempotent.
+select cron.unschedule('demail-dnsbl') where exists (select 1 from cron.job where jobname = 'demail-dnsbl');
+select cron.schedule(
+  'demail-dnsbl',
+  '*/30 * * * *',
+  $job$
+  select net.http_post(
+    url := (select decrypted_secret from vault.decrypted_secrets where name = 'demail_app_url') || '/api/cron/dnsbl',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'demail_cron_secret')
+    ),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 55000
+  );
+  $job$
+);

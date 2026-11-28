@@ -13,7 +13,7 @@ as $$
       select 1 from jsonb_array_elements(p_rules -> 'conditions') e
       where jsonb_typeof(e) <> 'object'
         or e ->> 'field' is null
-        or e ->> 'field' not in ('email', 'first_name', 'last_name', 'company', 'phone', 'subscribed', 'label', 'created_at')
+        or e ->> 'field' not in ('email', 'first_name', 'last_name', 'company', 'phone', 'subscribed', 'label', 'created_at', 'verify_status')
         or e ->> 'op' is null
         or e ->> 'op' not in ('contains', 'not_contains', 'equals', 'starts_with', 'is_empty', 'not_empty', 'is', 'has', 'not_has', 'before', 'after')
         or char_length(coalesce(e ->> 'value', '')) > 200
@@ -87,6 +87,8 @@ begin
       select 1 from public.contact_labels cl
       where cl.contact_id = c.id and cl.organization_id = c.organization_id and cl.label_id = v::uuid
     );
+  elsif f = 'verify_status' then
+    return o = 'is' and coalesce(c.verify_status, 'unverified') = v and v in ('valid', 'risky', 'invalid', 'unknown', 'unverified');
   elsif f = 'created_at' then
     if v !~ '^\d{4}-\d{2}-\d{2}$' then
       return false;

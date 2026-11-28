@@ -13,7 +13,7 @@ import { SelectAll } from "./select-all";
 const PAGE_SIZE = 50;
 const UUID = /^[0-9a-f-]{36}$/i;
 
-type Params = { q?: string; page?: string; label?: string; subscribed?: string; company?: string; segment?: string; error?: string; msg?: string };
+type Params = { q?: string; page?: string; label?: string; subscribed?: string; company?: string; segment?: string; verify?: string; error?: string; msg?: string };
 
 export default async function ContactsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const { supabase, org, canManage } = await getOrgContext();
@@ -29,7 +29,8 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
   const segment = segments?.find((s) => s.id === sp.segment);
   const subscribed = sp.subscribed === "yes" || sp.subscribed === "no" ? sp.subscribed : "";
   const company = (sp.company ?? "").trim().slice(0, 200);
-  const filters = filtersToRules({ label: label?.id, subscribed, company });
+  const verify = ["valid", "risky", "invalid", "unknown", "unverified"].includes(sp.verify ?? "") ? (sp.verify as string) : "";
+  const filters = filtersToRules({ label: label?.id, subscribed, company, verify });
   const segmentRules = segment ? (readRules(segment.rules) as unknown as Json) : null;
 
   const { data: contacts, count } = await supabase
@@ -38,7 +39,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       { p_org: org.id, p_rules: segmentRules ?? (filters as unknown as Json), p_extra: segmentRules ? (filters as unknown as Json) : null, p_q: q || null },
       { count: "exact" },
     )
-    .select("id, email, first_name, last_name, company, subscribed")
+    .select("id, email, first_name, last_name, company, subscribed, verify_status")
     .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
   const total = count ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -49,12 +50,13 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
     if (label) params.set("label", label.id);
     if (subscribed) params.set("subscribed", subscribed);
     if (company) params.set("company", company);
+    if (verify) params.set("verify", verify);
     if (segment && UUID.test(segment.id)) params.set("segment", segment.id);
     if (p) params.set("page", String(p));
     return params.toString();
   };
   const here = `/app/contacts${query(page) ? `?${query(page)}` : ""}`;
-  const filtered = !!(q || label || subscribed || company || segment);
+  const filtered = !!(q || label || subscribed || company || segment || verify);
 
   return (
     <div className="flex max-w-5xl flex-col gap-4">
@@ -79,7 +81,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
       />
       {sp.error && <Alert>{sp.error}</Alert>}
       {sp.msg && <Alert tone="info">{sp.msg}</Alert>}
-      <form className="grid grid-cols-2 gap-2 md:grid-cols-6">
+      <form className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
         <Input name="q" defaultValue={q} placeholder="Search email, name or company" className="col-span-2" />
         <Select name="label" defaultValue={label?.id ?? ""} aria-label="Label">
           <option value="">All labels</option>
@@ -93,6 +95,14 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
           <option value="">Any subscription</option>
           <option value="yes">Subscribed</option>
           <option value="no">Unsubscribed</option>
+        </Select>
+        <Select name="verify" defaultValue={verify} aria-label="Verification">
+          <option value="">Any verification</option>
+          <option value="valid">Valid</option>
+          <option value="risky">Risky</option>
+          <option value="invalid">Invalid</option>
+          <option value="unknown">Unknown</option>
+          <option value="unverified">Not verified yet</option>
         </Select>
         <Select name="segment" defaultValue={segment?.id ?? ""} aria-label="Segment">
           <option value="">No segment</option>
@@ -153,6 +163,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                 <th className="px-4 py-2">Name</th>
                 <th className="px-4 py-2">Company</th>
                 <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">Verification</th>
               </tr>
             </thead>
             <tbody>
@@ -169,11 +180,14 @@ export default async function ContactsPage({ searchParams }: { searchParams: Pro
                   <td className="px-4 py-2">{[c.first_name, c.last_name].filter(Boolean).join(" ")}</td>
                   <td className="px-4 py-2">{c.company}</td>
                   <td className="px-4 py-2">{c.subscribed ? "Subscribed" : "Unsubscribed"}</td>
+                  <td className="px-4 py-2">
+                    <span className={c.verify_status === "invalid" ? "text-red-700" : c.verify_status === "risky" ? "text-amber-700" : c.verify_status === "valid" ? "text-emerald-700" : "text-slate-500"}>{c.verify_status ?? "Not verified"}</span>
+                  </td>
                 </tr>
               ))}
               {(contacts ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                     {filtered ? "No contacts match these filters." : "No contacts yet. Import a CSV or add one."}
                   </td>
                 </tr>

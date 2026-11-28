@@ -11,6 +11,7 @@ export const FIELD_LABELS = {
   subscribed: "Subscription",
   label: "Label",
   created_at: "Added",
+  verify_status: "Verification",
 } as const;
 export const OP_LABELS: Record<string, string> = {
   contains: "contains",
@@ -35,12 +36,13 @@ export const OPS_FOR: Record<keyof typeof FIELD_LABELS, readonly string[]> = {
   subscribed: ["is"],
   label: ["has", "not_has"],
   created_at: ["before", "after"],
+  verify_status: ["is"],
 };
 
 const uuid = z.string().uuid();
 const condition = z
   .object({
-    field: z.enum(["email", "first_name", "last_name", "company", "phone", "subscribed", "label", "created_at"]),
+    field: z.enum(["email", "first_name", "last_name", "company", "phone", "subscribed", "label", "created_at", "verify_status"]),
     op: z.enum(["contains", "not_contains", "equals", "starts_with", "is_empty", "not_empty", "is", "has", "not_has", "before", "after"]),
     value: z.string().trim().max(200).default(""),
   })
@@ -50,6 +52,7 @@ const condition = z
     if (c.op === "is_empty" || c.op === "not_empty") return;
     if (c.field === "subscribed" && c.value !== "true" && c.value !== "false") return fail("Subscription must be subscribed or unsubscribed.");
     if (c.field === "label" && !uuid.safeParse(c.value).success) return fail("That label does not exist. Type a label name exactly.");
+    if (c.field === "verify_status" && !["valid", "risky", "invalid", "unknown", "unverified"].includes(c.value)) return fail("Verification must be valid, risky, invalid, unknown or unverified.");
     if (c.field === "created_at" && !/^\d{4}-\d{2}-\d{2}$/.test(c.value)) return fail("Enter a date.");
     if ((TEXT_FIELDS as readonly string[]).includes(c.field) && c.value === "") return fail("Enter a value.");
   });

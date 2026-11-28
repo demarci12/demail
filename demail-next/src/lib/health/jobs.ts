@@ -5,6 +5,7 @@ export const HEARTBEAT_JOBS = [
   { job: "warmup", label: "Warmup", everySeconds: 60 },
   { job: "ai", label: "AI reply classification", everySeconds: 60 },
   { job: "crm", label: "HubSpot sync", everySeconds: 300 },
+  { job: "verify", label: "Email verification", everySeconds: 120 },
   { job: "domains", label: "Domain checks", everySeconds: 3600 },
 ] as const;
 

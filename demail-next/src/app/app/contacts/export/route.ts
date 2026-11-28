@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     if (!data) return NextResponse.json({ error: "segment_not_found" }, { status: 404 });
     segmentRules = readRules(data.rules) as unknown as Json;
   }
-  const rules = filtersToRules({ label: sp.get("label") ?? undefined, subscribed: sp.get("subscribed") ?? undefined, company: sp.get("company") ?? undefined }) as unknown as Json;
+  const rules = filtersToRules({ label: sp.get("label") ?? undefined, subscribed: sp.get("subscribed") ?? undefined, company: sp.get("company") ?? undefined, verify: sp.get("verify") ?? undefined }) as unknown as Json;
   const rows: Record<string, unknown>[] = [];
   for (let from = 0; rows.length < MAX_ROWS; from += 1000) {
     const { data, error } = await supabase.rpc("contacts_search", { p_org: org.id, p_rules: segmentRules ?? rules, p_extra: segmentRules ? rules : null, p_q: sp.get("q") }).range(from, from + 999);

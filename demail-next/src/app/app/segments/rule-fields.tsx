@@ -29,7 +29,7 @@ export function RuleFields({ conditions, labels }: { conditions: Condition[]; la
         </div>
       ))}
       <p className="text-xs text-slate-500">
-        Text fields take contains, does not contain, is, starts with, is empty or is not empty. Subscription takes is. Label takes has or does not have. Added takes before or after. Blank rows are ignored.
+        Text fields take contains, does not contain, is, starts with, is empty or is not empty. Subscription takes is. Label takes has or does not have. Added takes before or after. Verification takes valid, risky, invalid, unknown or unverified. Blank rows are ignored.
       </p>
     </div>
   );

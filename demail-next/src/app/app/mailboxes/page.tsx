@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
 import { oauthProviders } from "@/lib/env";
-import { Alert, Card, PageHeader } from "@/components/ui/card";
+import { Alert, Card, EmptyState, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { localDayStart } from "@/lib/send/schedule";
@@ -179,8 +179,8 @@ export default async function MailboxesPage({ searchParams }: { searchParams: Pr
             })}
             {(mailboxes ?? []).length === 0 && (
               <tr>
-                <td colSpan={7} className="p-4 text-slate-500">
-                  No senders yet.
+                <td colSpan={7}>
+                  <EmptyState title="No senders yet">Connect a Google or Microsoft mailbox, or add an address on a domain you own, then campaigns and warmup can send from it.</EmptyState>
                 </td>
               </tr>
             )}

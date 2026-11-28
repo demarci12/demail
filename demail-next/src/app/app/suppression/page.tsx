@@ -1,5 +1,5 @@
 import { getOrgContext } from "@/lib/org";
-import { Alert, Card, PageHeader } from "@/components/ui/card";
+import { Alert, Card, EmptyState, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { addSuppression, removeSuppression } from "./actions";
@@ -57,8 +57,8 @@ export default async function SuppressionPage({ searchParams }: { searchParams: 
             ))}
             {(rows ?? []).length === 0 && (
               <tr>
-                <td colSpan={4} className="p-4 text-slate-500">
-                  Nothing suppressed.
+                <td colSpan={4}>
+                  <EmptyState title="Nothing suppressed">Unsubscribes, hard bounces and complaints are added here automatically. You can add an address yourself.</EmptyState>
                 </td>
               </tr>
             )}

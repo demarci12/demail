@@ -19,6 +19,7 @@ const nav = [
   { href: "/app/settings/members", label: "Members" },
   { href: "/app/settings/ai", label: "AI" },
   { href: "/app/settings/crm", label: "CRM" },
+  { href: "/app/settings/health", label: "Setup health" },
   { href: "/app/agency", label: "Agency" },
 ];
 

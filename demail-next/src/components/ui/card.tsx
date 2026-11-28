@@ -14,3 +14,13 @@ export function Alert({ children, tone = "error" }: { children: ReactNode; tone?
   const cls = tone === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-sky-200 bg-sky-50 text-sky-800";
   return <p className={`rounded-md border px-3 py-2 text-sm ${cls}`}>{children}</p>;
 }
+// An empty list: what it holds, why nothing is there and the one next step.
+export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-start gap-2 p-5 text-sm">
+      <p className="font-medium text-slate-800">{title}</p>
+      {children && <p className="max-w-prose text-slate-600">{children}</p>}
+      {action}
+    </div>
+  );
+}

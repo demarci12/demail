@@ -137,6 +137,12 @@ export type Database = {
         };
         Relationships: [];
       };
+      cron_heartbeats: {
+        Row: { job: string; last_run_at: string; last_ok_at: string | null; last_ok: boolean; last_ms: number | null; runs: number };
+        Insert: { job: string; last_run_at?: string; last_ok_at?: string | null; last_ok?: boolean; last_ms?: number | null; runs?: number };
+        Update: { job?: string; last_run_at?: string; last_ok_at?: string | null; last_ok?: boolean; last_ms?: number | null; runs?: number };
+        Relationships: [];
+      };
       labels: {
         Row: {
           id: string;
@@ -1919,6 +1925,7 @@ export type Database = {
         Args: { batch: number };
         Returns: Database["public"]["Tables"]["campaign_contacts"]["Row"][];
       };
+      record_cron_heartbeat: { Args: { p_job: string; p_ok: boolean; p_ms: number }; Returns: undefined };
       decide_branch: { Args: { p_enrollment: string; p_step: string }; Returns: boolean };
       claim_due_mailbox_syncs: {
         Args: { batch: number; p_org?: string | null };

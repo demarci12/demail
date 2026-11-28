@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
-import { Alert, Card, PageHeader } from "@/components/ui/card";
+import { Alert, Card, EmptyState, PageHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { createForm } from "./actions";
@@ -43,7 +43,11 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
               </Link>
             </li>
           ))}
-          {(forms ?? []).length === 0 && <li className="p-4 text-sm text-slate-500">No forms yet.</li>}
+          {(forms ?? []).length === 0 && (
+            <li>
+              <EmptyState title="No forms yet">A hosted form collects sign-ups from a public page and adds each one to your contacts, with a label or a campaign if you choose.</EmptyState>
+            </li>
+          )}
         </ul>
       </Card>
     </div>

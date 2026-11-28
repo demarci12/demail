@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getOrgContext } from "@/lib/org";
-import { Card, PageHeader } from "@/components/ui/card";
+import { Card, EmptyState, PageHeader } from "@/components/ui/card";
 export default async function CampaignsPage() {
   const { supabase, org } = await getOrgContext();
   const { data: campaigns } = await supabase.from("campaigns").select("id, name, status, created_at").eq("organization_id", org.id).order("created_at", { ascending: false });
@@ -24,7 +24,20 @@ export default async function CampaignsPage() {
               </Link>
             </li>
           ))}
-          {(campaigns ?? []).length === 0 && <li className="p-4 text-sm text-slate-500">No campaigns yet.</li>}
+          {(campaigns ?? []).length === 0 && (
+            <li>
+              <EmptyState
+                title="No campaigns yet"
+                action={
+                  <Link href="/app/campaigns/new" className="text-sky-700">
+                    Create your first campaign
+                  </Link>
+                }
+              >
+                A campaign sends a sequence of emails to your contacts from your connected mailboxes. Connect a mailbox and add contacts first.
+              </EmptyState>
+            </li>
+          )}
         </ul>
       </Card>
     </div>

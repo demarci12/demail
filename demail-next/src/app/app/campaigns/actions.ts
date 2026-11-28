@@ -28,6 +28,8 @@ const settingsSchema = z
     track_opens: z.boolean(),
     track_clicks: z.boolean(),
     stop_on_reply: z.boolean(),
+    skip_holidays: z.boolean(),
+    esp_matching: z.boolean(),
   })
   .refine((v) => v.send_end > v.send_start, "end")
   .refine((v) => {
@@ -49,6 +51,8 @@ function settings(formData: FormData) {
     track_opens: formData.get("track_opens") === "on",
     track_clicks: formData.get("track_clicks") === "on",
     stop_on_reply: formData.get("stop_on_reply") === "on",
+    skip_holidays: formData.get("skip_holidays") === "on",
+    esp_matching: formData.get("esp_matching") === "on",
   });
 }
 export async function createCampaign(formData: FormData) {

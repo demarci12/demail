@@ -42,13 +42,15 @@ export function isInWindow(now: Date, w: Window): boolean {
   return (w.sendDays & (1 << p.weekday)) !== 0 && p.minutes >= parseTime(w.start) && p.minutes < parseTime(w.end);
 }
 // Returns now when inside the window, else the next window start, or null when no day is enabled.
-export function nextWindowStart(now: Date, w: Window): Date | null {
+// skipDay marks local dates (such as public holidays) that never open the window.
+export function nextWindowStart(now: Date, w: Window, skipDay?: (y: number, m: number, d: number) => boolean): Date | null {
   if (w.sendDays === 0) return null;
   const today = localParts(now, w.timezone);
-  for (let i = 0; i <= 7; i++) {
+  for (let i = 0; i <= (skipDay ? 21 : 7); i++) {
     const day = new Date(Date.UTC(today.y, today.m - 1, today.d) + i * DAY_MS);
     if ((w.sendDays & (1 << day.getUTCDay())) === 0) continue;
     const args = [day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate()] as const;
+    if (skipDay?.(...args)) continue;
     const start = zonedToUtc(...args, parseTime(w.start), w.timezone);
     const end = zonedToUtc(...args, parseTime(w.end), w.timezone);
     if (end.getTime() <= now.getTime()) continue;

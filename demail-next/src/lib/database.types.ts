@@ -242,6 +242,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      recipient_hosts: {
+        Row: {
+          domain: string;
+          esp: string;
+          checked_at: string;
+        };
+        Insert: {
+          domain: string;
+          esp: string;
+          checked_at?: string;
+        };
+        Update: {
+          domain?: string;
+          esp?: string;
+          checked_at?: string;
+        };
+        Relationships: [];
+      };
       mailboxes: {
         Row: {
           id: string;
@@ -269,6 +287,10 @@ export type Database = {
           warmup_end: string;
           warmup_filter_tag_enabled: boolean;
           warmup_filter_tag: string | null;
+          ramp_enabled: boolean;
+          ramp_start: number;
+          ramp_step: number;
+          ramp_started_at: string | null;
         };
         Insert: {
           id?: string;
@@ -296,6 +318,10 @@ export type Database = {
           warmup_end?: string;
           warmup_filter_tag_enabled?: boolean;
           warmup_filter_tag?: string | null;
+          ramp_enabled?: boolean;
+          ramp_start?: number;
+          ramp_step?: number;
+          ramp_started_at?: string | null;
         };
         Update: {
           id?: string;
@@ -323,6 +349,10 @@ export type Database = {
           warmup_end?: string;
           warmup_filter_tag_enabled?: boolean;
           warmup_filter_tag?: string | null;
+          ramp_enabled?: boolean;
+          ramp_start?: number;
+          ramp_step?: number;
+          ramp_started_at?: string | null;
         };
         Relationships: [];
       };
@@ -341,6 +371,8 @@ export type Database = {
           unsubscribe_header: boolean;
           track_opens: boolean;
           track_clicks: boolean;
+          skip_holidays: boolean;
+          esp_matching: boolean;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -359,6 +391,8 @@ export type Database = {
           unsubscribe_header?: boolean;
           track_opens?: boolean;
           track_clicks?: boolean;
+          skip_holidays?: boolean;
+          esp_matching?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -377,6 +411,8 @@ export type Database = {
           unsubscribe_header?: boolean;
           track_opens?: boolean;
           track_clicks?: boolean;
+          skip_holidays?: boolean;
+          esp_matching?: boolean;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;

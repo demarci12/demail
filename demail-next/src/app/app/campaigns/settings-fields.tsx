@@ -1,6 +1,6 @@
 import { Field, Input } from "@/components/ui/input";
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-type Values = { name?: string; timezone?: string; send_days?: number; send_start?: string; send_end?: string; track_opens?: boolean; track_clicks?: boolean; stop_on_reply?: boolean };
+type Values = { name?: string; timezone?: string; send_days?: number; send_start?: string; send_end?: string; track_opens?: boolean; track_clicks?: boolean; stop_on_reply?: boolean; skip_holidays?: boolean; esp_matching?: boolean };
 export function CampaignFields({ values = {} }: { values?: Values }) {
   const days = values.send_days ?? 62;
   return (
@@ -42,6 +42,16 @@ export function CampaignFields({ values = {} }: { values?: Values }) {
           Stop on reply
         </label>
         <p className="text-xs text-slate-500">A reply from the contact stops their sequence. Turn it off to branch on replies.</p>
+        <label className="mt-2 flex items-center gap-2">
+          <input type="checkbox" name="skip_holidays" defaultChecked={values.skip_holidays ?? false} />
+          Skip public holidays
+        </label>
+        <p className="text-xs text-slate-500">A send due on a public holiday of the contact&apos;s country waits for the next working day inside the send window. The country is read from the contact&apos;s country, country_code, location or region field (HU, US, GB, DE, FR, AT). Contacts with no known country are not skipped.</p>
+        <label className="mt-2 flex items-center gap-2">
+          <input type="checkbox" name="esp_matching" defaultChecked={values.esp_matching ?? false} />
+          Match sender to recipient host
+        </label>
+        <p className="text-xs text-slate-500">A first email to a Google-hosted recipient prefers a Google sender, and Microsoft prefers Microsoft. If no matching sender can send, any available sender is used.</p>
       </div>
     </>
   );

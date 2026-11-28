@@ -13,6 +13,10 @@ import type { MailThread } from "@/lib/mail/types";
 import { localDayStart, nextWindowStart } from "./schedule";
 import { chooseVariant } from "./variants";
 import { branchTarget } from "./branch";
+import { contactCountry, isHoliday } from "./holidays";
+import { rampLimit } from "./ramp";
+import { chooseSender, type Esp } from "./esp";
+import { recipientEsp } from "./esp-lookup";
 type Row<T extends keyof Database["public"]["Tables"]> = Database["public"]["Tables"][T]["Row"];
 type Campaign = Row<"campaigns">;
 type Step = Row<"campaign_steps">;
@@ -59,6 +63,7 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
   const campaignSent = new Map<string, number>();
   const poolState = new Map<string, { agency: string; capLeft: number | null } | null>();
   const agencyPoolLeft = new Map<string, number | null>();
+  const espMemo = new Map<string, Esp | null>();
   // A mailbox with no row counts as healthy.
   const bands = new Map<string, string>();
   {
@@ -281,7 +286,9 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       continue;
     }
     const window = { timezone: campaign.timezone, sendDays: campaign.send_days, start: campaign.send_start, end: campaign.send_end };
-    const start = nextWindowStart(now, window);
+    // Holiday skipping uses the recipient's country; a contact with no known country is never skipped.
+    const country = campaign.skip_holidays ? contactCountry(contact.custom_fields) : null;
+    const start = nextWindowStart(now, window, country ? (y, m, d) => isHoliday(country, { y, m, d }) : undefined);
     if (!start) {
       await defer(e, plus(now, 24 * 3_600_000));
       continue;
@@ -344,7 +351,9 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
         continue;
       }
       const throttled = band === "throttled";
-      const limit = throttled ? Math.max(1, Math.floor(m.daily_limit / 2)) : m.daily_limit;
+      // The lowest limit applies: the ramp, then the mailbox cap, then the health band.
+      const cap = rampLimit({ enabled: m.ramp_enabled, start: m.ramp_start, step: m.ramp_step, startedAt: m.ramp_started_at }, m.daily_limit, now);
+      const limit = throttled ? Math.max(1, Math.floor(cap / 2)) : cap;
       const st = await mailboxState(m);
       const gapEnds = st.last + m.min_gap_seconds * (throttled ? 2 : 1) * 1000;
       if (st.sent >= limit) {
@@ -359,8 +368,9 @@ export async function runSendTick(now = new Date()): Promise<TickResult> {
       eligible.push({ m, sent: st.sent });
     }
     if (eligible.length) {
-      const pinned = eligible.find((x) => x.m.id === e.mailbox_id);
-      chosen = (pinned ?? eligible.sort((a, b) => a.sent - b.sent)[0]).m;
+      // Only a new thread can be matched; a follow-up is already pinned to its mailbox. A failed host lookup falls back to any sender.
+      const esp = campaign.esp_matching && eligible.length > 1 && !pinnedTo ? await recipientEsp(admin, contact.email, espMemo, now) : null;
+      chosen = chooseSender(eligible, e.mailbox_id, campaign.esp_matching, esp)?.m ?? null;
     }
     if (!chosen) {
       if (instanceBlocked && !gapBlocked && !healthBlocked && !pinnedTo) {
